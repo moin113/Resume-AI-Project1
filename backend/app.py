@@ -31,11 +31,7 @@ if PROJECT_ROOT not in sys.path:
 # App Factory (ONLY ONE)
 # --------------------------------------------------
 def create_app():
-    app = Flask(
-        __name__,
-        template_folder="../frontend",
-        static_folder="../frontend/static"
-    )
+    app = Flask(__name__)
 
     # ---------------- CONFIG ----------------
     secret_key = os.getenv("SECRET_KEY", "dev-secret-key")

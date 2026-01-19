@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResumeDoctor AI - AI-Powered Resume Analysis</title>
+    <meta name="description" content="Transform your resume with AI-powered analysis. Get personalized suggestions, ATS optimization, and land your dream job.">
+    <link rel="stylesheet" href="static/css/landing.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/x-icon" href="static/favicon.ico">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="nav-brand">
+                <span class="brand-icon">🤖</span>
+                <span class="brand-text">ResumeDoctor AI</span>
+            </a>
+            
+            <div class="nav-menu">
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#how-it-works" class="nav-link">How It Works</a>
+                <a href="#pricing" class="nav-link">Pricing</a>
+                <a href="login" class="nav-link">Login</a>
+                <a href="register" class="nav-link btn btn-primary">Get Started</a>
+            </div>
+            
+            <button class="nav-toggle" id="navToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1 class="hero-title">Transform Your Resume with AI-Powered Analysis</h1>
+                <p class="hero-description">
+                    Get personalized suggestions, ATS optimization, and expert insights to land your dream job. 
+                    Our AI analyzes your resume against job descriptions and provides actionable recommendations.
+                </p>
+                <div class="hero-actions">
+                    <button class="btn btn-primary btn-lg" onclick="scrollToUpload()">
+                        Analyze My Resume
+                    </button>
+                    <button class="btn btn-secondary btn-lg" onclick="playDemo()">
+                        <span>▶</span> Watch Demo
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Background Animation -->
+        <div class="hero-bg">
+            <div class="floating-element" style="top: 20%; left: 10%; animation-delay: 0s;">📄</div>
+            <div class="floating-element" style="top: 60%; left: 80%; animation-delay: 2s;">🎯</div>
+            <div class="floating-element" style="top: 30%; left: 70%; animation-delay: 4s;">💼</div>
+            <div class="floating-element" style="top: 70%; left: 20%; animation-delay: 6s;">⚡</div>
+        </div>
+    </section>
+
+    <!-- Upload Section -->
+    <section id="upload" class="upload-section">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Start Your Analysis</h2>
+                <p class="section-description">Upload your resume and job description to get started</p>
+            </div>
+            
+            <div class="upload-container">
+                <div class="upload-area" id="resumeUpload">
+                    <div class="upload-icon">📄</div>
+                    <h3>Upload Resume</h3>
+                    <p>Drag & drop your resume or click to browse</p>
+                    <input type="file" id="resumeFile" accept=".pdf,.doc,.docx" hidden>
+                    <button class="btn btn-outline">Choose File</button>
+                </div>
+                
+                <div class="upload-divider">
+                    <span>AND</span>
+                </div>
+                
+                <div class="upload-area" id="jobDescUpload">
+                    <div class="upload-icon">💼</div>
+                    <h3>Job Description</h3>
+                    <p>Paste the job description or upload a file</p>
+                    <textarea placeholder="Paste job description here..." rows="4"></textarea>
+                    <button class="btn btn-outline">Or Upload File</button>
+                </div>
+            </div>
+            
+            <div class="upload-actions">
+                <button class="btn btn-primary btn-lg" id="analyzeBtn" disabled>
+                    Analyze Resume
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Powerful AI-Driven Features</h2>
+                <p class="section-description">Everything you need to create the perfect resume</p>
+            </div>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <h3>ATS Optimization</h3>
+                    <p>Ensure your resume passes Applicant Tracking Systems with our advanced keyword analysis and formatting suggestions.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Match Score Analysis</h3>
+                    <p>Get a detailed compatibility score showing how well your resume matches the job requirements.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">💡</div>
+                    <h3>Smart Suggestions</h3>
+                    <p>Receive personalized recommendations to improve your resume content, structure, and impact.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3>Keyword Optimization</h3>
+                    <p>Identify missing keywords and optimize your resume for better visibility to recruiters.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">📈</div>
+                    <h3>Performance Tracking</h3>
+                    <p>Track your resume improvements over time and see how changes affect your match scores.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Instant Results</h3>
+                    <p>Get comprehensive analysis and suggestions in seconds, not hours or days.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">How It Works</h2>
+                <p class="section-description">Simple, fast, and effective resume optimization</p>
+            </div>
+            
+            <div class="steps-container">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Upload Your Resume</h3>
+                        <p>Upload your current resume in PDF, DOC, or DOCX format</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Add Job Description</h3>
+                        <p>Paste or upload the job description you're targeting</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Get AI Analysis</h3>
+                        <p>Our AI analyzes your resume and provides detailed insights</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Implement Suggestions</h3>
+                        <p>Apply our recommendations to improve your resume</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="pricing">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Choose Your Plan</h2>
+                <p class="section-description">Start free, upgrade when you need more</p>
+            </div>
+            
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <h3>Free</h3>
+                    <div class="price">
+                        <span class="currency">$</span>
+                        <span class="amount">0</span>
+                        <span class="period">/month</span>
+                    </div>
+                    <ul class="features-list">
+                        <li>✓ 3 resume analyses per month</li>
+                        <li>✓ Basic ATS optimization</li>
+                        <li>✓ Match score analysis</li>
+                        <li>✓ Email support</li>
+                    </ul>
+                    <button class="btn btn-outline">Get Started</button>
+                </div>
+                
+                <div class="pricing-card featured">
+                    <div class="popular-badge">Most Popular</div>
+                    <h3>Pro</h3>
+                    <div class="price">
+                        <span class="currency">$</span>
+                        <span class="amount">19</span>
+                        <span class="period">/month</span>
+                    </div>
+                    <ul class="features-list">
+                        <li>✓ Unlimited resume analyses</li>
+                        <li>✓ Advanced ATS optimization</li>
+                        <li>✓ Detailed keyword analysis</li>
+                        <li>✓ Custom suggestions</li>
+                        <li>✓ Priority support</li>
+                        <li>✓ Resume templates</li>
+                    </ul>
+                    <button class="btn btn-primary">Start Free Trial</button>
+                </div>
+                
+                <div class="pricing-card">
+                    <h3>Enterprise</h3>
+                    <div class="price">
+                        <span class="amount">Custom</span>
+                    </div>
+                    <ul class="features-list">
+                        <li>✓ Everything in Pro</li>
+                        <li>✓ Team management</li>
+                        <li>✓ API access</li>
+                        <li>✓ Custom integrations</li>
+                        <li>✓ Dedicated support</li>
+                        <li>✓ SLA guarantee</li>
+                    </ul>
+                    <button class="btn btn-outline">Contact Sales</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="nav-brand">
+                        <span class="brand-icon">🤖</span>
+                        <span class="brand-text">ResumeDoctor AI</span>
+                    </div>
+                    <p>Transform your career with AI-powered resume optimization.</p>
+                </div>
+                
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Product</h4>
+                        <a href="#features">Features</a>
+                        <a href="#pricing">Pricing</a>
+                        <a href="#how-it-works">How It Works</a>
+                    </div>
+                    
+                    <div class="footer-column">
+                        <h4>Company</h4>
+                        <a href="#about">About</a>
+                        <a href="#contact">Contact</a>
+                        <a href="#careers">Careers</a>
+                    </div>
+                    
+                    <div class="footer-column">
+                        <h4>Support</h4>
+                        <a href="#help">Help Center</a>
+                        <a href="#privacy">Privacy Policy</a>
+                        <a href="#terms">Terms of Service</a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>&copy; 2024 ResumeDoctor AI. All rights reserved.</p>
+                <div class="social-links">
+                    <a href="#" aria-label="Twitter">🐦</a>
+                    <a href="#" aria-label="LinkedIn">💼</a>
+                    <a href="#" aria-label="GitHub">🐙</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="static/js/landing.js"></script>
+</body>
+</html>
