@@ -233,6 +233,7 @@ def perform_scan():
                 'missing_skills': [s['skill'] if isinstance(s, dict) else s for s in detailed_analysis.get('missing_skills', [])],
                 'summary': summary,
                 'category_scores': category_scores,
+                'detailed_analysis': detailed_analysis,
                 'recommendations': recommendations,
                 'scan_status': user.get_scan_status(),
                 'scan_balance': user.get_scan_status()

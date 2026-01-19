@@ -1,14 +1,19 @@
-"""
-Real-Time LLM Analysis Service - Advanced AI-powered resume-job comparison
-Provides accurate, real-time analysis using modern NLP and semantic matching
-"""
-
 import logging
 import re
 import json
+import os
 from typing import Dict, List, Tuple, Set, Optional
 from collections import Counter
 from datetime import datetime
+
+import spacy
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+
 from backend.models import db, Resume, JobDescription, MatchScore
 
 # Configure logging
@@ -18,12 +23,23 @@ logger = logging.getLogger(__name__)
 
 class RealTimeLLMService:
     """
-    Real-time LLM service for accurate resume-job description analysis
-    Uses advanced semantic matching and contextual understanding
+    Real-time AI-powered service for accurate resume-job description analysis.
+    Uses spaCy for semantic analysis, NLTK for text processing, and scikit-learn for TF-IDF similarity.
     """
 
     def __init__(self):
         self.logger = logger
+        try:
+            self.nlp = spacy.load('en_core_web_sm')
+        except OSError:
+            # Fallback if model not found dynamically
+            self.logger.warning("spaCy model 'en_core_web_sm' not found. Make sure it's installed.")
+            self.nlp = None
+
+        try:
+            self.stop_words = set(stopwords.words('english'))
+        except:
+            self.stop_words = set()
 
         # Enhanced skill synonyms with semantic understanding
         self.skill_synonyms = {
@@ -36,59 +52,73 @@ class RealTimeLLMService:
             'database': ['db', 'sql', 'nosql', 'rdbms', 'mysql', 'postgresql', 'mongodb', 'redis'],
             'cloud': ['aws', 'azure', 'gcp', 'google cloud', 'amazon web services'],
             'devops': ['ci/cd', 'docker', 'kubernetes', 'jenkins', 'gitlab ci', 'github actions'],
-            'web development': ['frontend', 'backend', 'full stack', 'html', 'css', 'responsive design'],
             'api': ['rest', 'restful', 'graphql', 'microservices', 'web services'],
-            'testing': ['unit testing', 'integration testing', 'tdd', 'bdd', 'jest', 'pytest'],
-            'version control': ['git', 'github', 'gitlab', 'bitbucket', 'svn'],
-            'project management': ['agile', 'scrum', 'kanban', 'jira', 'trello', 'asana'],
-            'communication': ['verbal', 'written', 'presentation', 'documentation'],
-            'leadership': ['team lead', 'management', 'mentoring', 'coaching'],
-            'problem solving': ['analytical thinking', 'troubleshooting', 'debugging', 'critical thinking']
+            'project management': ['agile', 'scrum', 'kanban', 'jira', 'trello', 'asana']
         }
 
-        # Technical skill categories for better classification
-        self.technical_categories = {
-            'programming_languages': ['javascript', 'python', 'java', 'c#', 'c++', 'php', 'ruby', 'go', 'rust'],
-            'frameworks': ['react', 'angular', 'vue', 'django', 'flask', 'spring', 'express', 'laravel'],
-            'databases': ['mysql', 'postgresql', 'mongodb', 'redis', 'elasticsearch', 'oracle'],
-            'cloud_platforms': ['aws', 'azure', 'gcp', 'heroku', 'digitalocean'],
-            'tools': ['docker', 'kubernetes', 'jenkins', 'git', 'jira', 'confluence']
-        }
-    
+    def _preprocess_text(self, text: str) -> str:
+        """Preprocess text for NLP analysis (lemmatization, tokenization, stopword removal)"""
+        if not text:
+            return ""
+        
+        # Lowercase and clean
+        text = text.lower().strip()
+        text = re.sub(r'[^\w\s]', ' ', text)
+        
+        if self.nlp:
+            doc = self.nlp(text)
+            tokens = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and len(token.text) > 2]
+        else:
+            tokens = word_tokenize(text)
+            tokens = [t for t in tokens if t not in self.stop_words and len(t) > 2]
+            
+        return " ".join(tokens)
+
     def analyze_resume_realtime(self, resume_text: str, job_description_text: str) -> Dict:
         """
-        Real-time analysis of resume against job description using advanced LLM techniques
-
-        Args:
-            resume_text: Raw resume text content
-            job_description_text: Raw job description text
-
-        Returns:
-            Dict containing comprehensive real-time analysis
+        Real-time analysis of resume against job description using advanced NLP techniques.
         """
         try:
             if not resume_text or not job_description_text:
                 return {'success': False, 'error': 'Missing resume or job description text'}
 
-            # Perform real-time semantic analysis
+            self.logger.info("Starting real-time NLP analysis...")
+
+            # 1. Text Preprocessing
+            clean_resume = self._preprocess_text(resume_text)
+            clean_jd = self._preprocess_text(job_description_text)
+
+            # 2. Semantic Analysis using spaCy
             resume_analysis = self._analyze_text_semantically(resume_text)
             jd_analysis = self._analyze_text_semantically(job_description_text)
 
-            # Calculate real-time matching scores
-            match_results = self._calculate_realtime_match(resume_analysis, jd_analysis)
+            # 3. TF-IDF & Cosine Similarity using scikit-learn
+            tfidf_vectorizer = TfidfVectorizer()
+            tfidf_matrix = tfidf_vectorizer.fit_transform([clean_resume, clean_jd])
+            content_similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+            similarity_perc = content_similarity * 100
 
-            # Generate contextual recommendations
+            # 4. Keyword and Category Specific Matching
+            match_results = self._calculate_realtime_match(resume_analysis, jd_analysis)
+            
+            # Combine TF-IDF similarity with keyword-based matching
+            # Weight: 40% TF-IDF, 60% Structured Matching
+            overall_score = (similarity_perc * 0.4) + (match_results['overall_score'] * 0.6)
+            overall_score = round(min(max(overall_score, 0), 100), 1)
+
+            # 5. Generate Recommendations
             recommendations = self._generate_contextual_recommendations(
                 resume_analysis, jd_analysis, match_results
             )
 
-            # Calculate ATS compatibility score
+            # 6. ATS Compatibility
             ats_score = self._calculate_ats_compatibility(resume_text, jd_analysis)
 
             return {
                 'success': True,
                 'timestamp': datetime.utcnow().isoformat(),
-                'overall_match_score': match_results['overall_score'],
+                'overall_match_score': overall_score,
+                'content_similarity': round(similarity_perc, 1),
                 'category_scores': {
                     'technical_skills': match_results['technical_score'],
                     'soft_skills': match_results['soft_skills_score'],
@@ -100,7 +130,8 @@ class RealTimeLLMService:
                     'matched_skills': match_results['matched_skills'],
                     'missing_skills': match_results['missing_skills'],
                     'skill_gaps': match_results['skill_gaps'],
-                    'strength_areas': match_results['strength_areas']
+                    'strength_areas': match_results['strength_areas'],
+                    'text_metrics': resume_analysis['text_metrics']
                 },
                 'recommendations': recommendations,
                 'keyword_analysis': {
@@ -111,7 +142,9 @@ class RealTimeLLMService:
             }
 
         except Exception as e:
-            self.logger.error(f"Error in real-time analysis: {e}")
+            self.logger.error(f"Error in real-time NLP analysis: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return {'success': False, 'error': str(e)}
 
     def calculate_enhanced_match_score(self, resume_id: int, job_description_id: int, user_id: int) -> Dict:
@@ -369,27 +402,41 @@ class RealTimeLLMService:
         }
 
     def _extract_technical_skills_semantic(self, text: str) -> Dict[str, int]:
-        """Extract technical skills with semantic understanding and frequency"""
+        """Extract technical skills with semantic understanding, regex, and spaCy NER/Noun chunks"""
         skills_found = {}
 
-        # Enhanced technical skills patterns
+        # 1. Regex-based extraction for known patterns
         tech_patterns = {
-            'javascript': r'\b(?:javascript|js|node\.?js|typescript|ts|react|angular|vue)\b',
-            'python': r'\b(?:python|py|django|flask|fastapi|pandas|numpy)\b',
-            'java': r'\b(?:java|spring|hibernate|maven|gradle)\b',
-            'csharp': r'\b(?:c#|csharp|\.net|asp\.net|entity framework)\b',
-            'database': r'\b(?:sql|mysql|postgresql|mongodb|redis|database|db)\b',
-            'cloud': r'\b(?:aws|azure|gcp|google cloud|amazon web services|cloud)\b',
-            'devops': r'\b(?:docker|kubernetes|jenkins|ci/cd|devops|terraform)\b',
-            'web': r'\b(?:html|css|sass|less|bootstrap|tailwind|responsive)\b',
-            'api': r'\b(?:api|rest|restful|graphql|microservices|json)\b',
-            'testing': r'\b(?:testing|unit test|integration test|tdd|bdd|jest|pytest)\b'
+            'javascript': r'\b(?:javascript|js|node\.?js|typescript|ts|react|angular|vue|next\.js|nuxt|express)\b',
+            'python': r'\b(?:python|py|django|flask|fastapi|pandas|numpy|scipy|sklearn|pytorch|tensorflow)\b',
+            'java': r'\b(?:java|spring|hibernate|maven|gradle|kotlin)\b',
+            'csharp': r'\b(?:c#|csharp|\.net|asp\.net|entity framework|unity|blazor)\b',
+            'database': r'\b(?:sql|mysql|postgresql|mongodb|redis|database|db|oracle|sqlite|cassandra)\b',
+            'cloud': r'\b(?:aws|azure|gcp|google cloud|amazon web services|cloud|lambda|docker|kubernetes)\b',
+            'devops': r'\b(?:docker|kubernetes|jenkins|ci/cd|devops|terraform|ansible|vagrant)\b',
+            'web': r'\b(?:html|css|sass|less|bootstrap|tailwind|responsive|web|ux|ui|figma)\b',
+            'api': r'\b(?:api|rest|restful|graphql|microservices|json|soap)\b',
+            'testing': r'\b(?:testing|unit test|integration test|tdd|bdd|jest|pytest|selenium|cypress)\b'
         }
 
         for skill, pattern in tech_patterns.items():
             matches = re.findall(pattern, text, re.IGNORECASE)
             if matches:
                 skills_found[skill] = len(matches)
+
+        # 2. spaCy-based extraction for emerging skills (Noun chunks / NER)
+        if self.nlp:
+            doc = self.nlp(text)
+            # Focus on capitalized entities or technical-sounding noun phrases
+            for chunk in doc.noun_chunks:
+                chunk_text = chunk.text.lower().strip()
+                # If it's a short, specific-looking term not already found
+                if 2 < len(chunk_text) < 20 and chunk_text not in skills_found:
+                    # Simple heuristic: if it contains a technical keyword or is a single word capitalized in original
+                    if any(token.pos_ in ['PROPN'] for token in chunk if len(token.text) > 2):
+                        # Don't add common English words
+                        if not chunk.root.is_stop:
+                            skills_found[chunk_text] = 1
 
         return skills_found
 
@@ -495,42 +542,23 @@ class RealTimeLLMService:
             jd_analysis['education_analysis']
         )
 
-        # Calculate weighted overall score with enhanced scoring for better matches
-        tech_weight = 0.5  # Increased from 0.4 to emphasize technical skills
-        soft_weight = 0.25  # Increased from 0.2
-        exp_weight = 0.15   # Reduced from 0.25
-        edu_weight = 0.1    # Reduced from 0.15
-
-        # Base weighted score
-        base_score = (
-            tech_matches['score'] * tech_weight +
-            soft_matches['score'] * soft_weight +
-            exp_score * exp_weight +
-            edu_score * edu_weight
+        # Calculate weighted overall score
+        # 30% TF-IDF (Global Content Similarity)
+        # 40% Technical Skills
+        # 15% Soft Skills
+        # 10% Experience
+        # 5% Education
+        
+        # Note: self.similarity_perc or similar can be used if we store it
+        # Since this method is called within analyze_resume_realtime, we calculate combined score there.
+        # This method provides the structured weights.
+        
+        overall_score = (
+            tech_matches['score'] * 0.5 +
+            soft_matches['score'] * 0.2 +
+            exp_score * 0.2 +
+            edu_score * 0.1
         )
-
-        # Apply bonus scoring for strong matches to reach 95-100% range
-        bonus_multiplier = 1.0
-
-        # Bonus for high technical skills match (>80%)
-        if tech_matches['score'] > 80:
-            bonus_multiplier += 0.1
-
-        # Bonus for high soft skills match (>75%)
-        if soft_matches['score'] > 75:
-            bonus_multiplier += 0.05
-
-        # Bonus for good overall keyword coverage
-        total_matched_skills = len(tech_matches['matched']) + len(soft_matches['matched'])
-        total_required_skills = len(tech_matches['matched']) + len(tech_matches['missing']) + len(soft_matches['matched']) + len(soft_matches['missing'])
-
-        if total_required_skills > 0:
-            skill_coverage = total_matched_skills / total_required_skills
-            if skill_coverage > 0.7:  # 70% skill coverage gets bonus
-                bonus_multiplier += 0.08
-
-        # Apply bonus and ensure we stay within realistic bounds
-        overall_score = min(base_score * bonus_multiplier, 100)
 
         return {
             'overall_score': round(overall_score, 1),
@@ -545,14 +573,16 @@ class RealTimeLLMService:
         }
 
     def _calculate_skill_matches(self, resume_skills: Dict, jd_skills: Dict, skill_type: str = 'technical') -> Dict:
-        """Calculate skill matching with synonym recognition"""
+        """Calculate skill matching with synonym recognition and fuzzy matching"""
+        from fuzzywuzzy import fuzz
+        
         matched = []
         missing = []
 
         for jd_skill, jd_freq in jd_skills.items():
             found_match = False
 
-            # Direct match
+            # Direct/Exact match
             if jd_skill in resume_skills:
                 matched.append({
                     'skill': jd_skill,
@@ -581,24 +611,35 @@ class RealTimeLLMService:
                         if found_match:
                             break
 
-                # If still no match, check for partial/fuzzy matches
+                # If still no match, check for fuzzy matching using fuzzywuzzy
                 if not found_match:
+                    best_match = None
+                    highest_score = 0
+                    
                     for resume_skill in resume_skills.keys():
-                        # Check if job skill is contained in resume skill or vice versa
-                        if (jd_skill.lower() in resume_skill.lower() and len(jd_skill) > 3) or \
-                           (resume_skill.lower() in jd_skill.lower() and len(resume_skill) > 3):
-                            matched.append({
-                                'skill': jd_skill,
-                                'resume_skill': resume_skill,
-                                'resume_freq': resume_skills[resume_skill],
-                                'jd_freq': jd_freq,
-                                'match_type': 'partial',
-                                'category': 'soft_skills' if skill_type == 'soft' else 'technical_skills'
-                            })
-                            found_match = True
-                            break
+                        # Calculate fuzzy similarity score
+                        score = fuzz.ratio(jd_skill.lower(), resume_skill.lower())
+                        if score > 85: # High threshold for accuracy
+                            if score > highest_score:
+                                highest_score = score
+                                best_match = resume_skill
+                    
+                    if best_match:
+                        matched.append({
+                            'skill': jd_skill,
+                            'resume_skill': best_match,
+                            'resume_freq': resume_skills[best_match],
+                            'jd_freq': jd_freq,
+                            'match_type': 'fuzzy',
+                            'score': highest_score,
+                            'category': 'soft_skills' if skill_type == 'soft' else 'technical_skills'
+                        })
+                        found_match = True
 
-            if not found_match:
+        # Calculate missing skills
+        for jd_skill, jd_freq in jd_skills.items():
+            is_matched = any(m['skill'] == jd_skill for m in matched)
+            if not is_matched:
                 missing.append({
                     'skill': jd_skill,
                     'jd_freq': jd_freq,

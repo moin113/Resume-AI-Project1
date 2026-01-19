@@ -133,6 +133,7 @@ def get_scan_detail(scan_id):
                 'overall_match_score': round(scan.overall_match_score, 2), # Frontend looks for this
                 'score_category': scan.get_score_category(),
                 'category_scores': category_scores,
+                'detailed_analysis': detailed_analysis,
                 'matched_skills': detailed_analysis.get('matched_skills', []),
                 'missing_skills': detailed_analysis.get('missing_skills', []),
                 'summary': detailed_analysis.get('summary', summary),

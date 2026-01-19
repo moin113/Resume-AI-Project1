@@ -92,11 +92,14 @@ function displayScanDetails(scan) {
         summaryEl.textContent = scan.summary || 'Scan results analyzed successfully.';
     }
 
+    // Update progress bars (Phase 7.3)
+    updateProgressBars(scan);
+
     // Update charts/scores
     updateEnhancedMatchRate(scan);
 
     // Populate skills sections based on data available
-    if (scan.detailed_analysis && (scan.detailed_analysis.matched_skills || scan.detailed_analysis.missing_skills)) {
+    if (scan.detailed_analysis) {
         console.log('🎯 Using enhanced detailed analysis for UI');
         populateDetailedAnalysisSections(scan);
     } else {
@@ -154,21 +157,57 @@ function updateMatchRate(percentage) {
 }
 
 function updateEnhancedMatchRate(analysis) {
-    console.log('📊 Updating enhanced match rate:', analysis.overall_match_score);
+    const score = analysis.overall_match_score || analysis.score || 0;
+    console.log('📊 Updating enhanced match rate:', score);
 
     const matchPercentageEl = document.getElementById('match-percentage');
     const progressEl = document.getElementById('match-progress');
 
     if (matchPercentageEl) {
-        matchPercentageEl.textContent = analysis.overall_match_score + '%';
+        matchPercentageEl.textContent = Math.round(score) + '%';
     }
 
     if (progressEl) {
-        const percentage = analysis.overall_match_score;
+        const percentage = score;
         const degrees = (percentage / 100) * 360;
         const color = percentage >= 80 ? '#10b981' : percentage >= 60 ? '#fbbf24' : '#dc2626';
-        const greenStart = Math.min(degrees * 0.3, 108);
-        progressEl.style.background = `conic-gradient(${color} 0deg ${degrees}deg, #10b981 ${degrees}deg ${degrees + greenStart}deg, #e5e7eb ${degrees + greenStart}deg 360deg)`;
+        progressEl.style.background = `conic-gradient(${color} 0deg ${degrees}deg, #e5e7eb ${degrees}deg 360deg)`;
+    }
+}
+
+function updateProgressBars(scan) {
+    const categoryScores = scan.category_scores || {};
+
+    // Searchability / ATS
+    const atsScore = category_scores.ats_compatibility || scan.ats_compatibility || 0;
+    updateProgressBar('searchability', atsScore);
+
+    // Hard Skills
+    const techScore = category_scores.technical_skills || 0;
+    updateProgressBar('hard-skills', techScore);
+
+    // Soft Skills
+    const softScore = category_scores.soft_skills || 0;
+    updateProgressBar('soft-skills', softScore);
+
+    // Recruiter Tips (Experience match)
+    const expScore = category_scores.experience_match || 0;
+    updateProgressBar('recruiter-tips', expScore);
+}
+
+function updateProgressBar(id, score) {
+    const fill = document.querySelector(`.progress-fill.${id}`);
+    const count = document.getElementById(`${id}-count`);
+
+    if (fill) {
+        fill.style.width = `${score}%`;
+    }
+
+    if (count) {
+        if (score >= 90) count.textContent = 'Excellent!';
+        else if (score >= 70) count.textContent = 'Good Match';
+        else if (score >= 50) count.textContent = 'Fair Match';
+        else count.textContent = 'Needs Focus';
     }
 }
 
