@@ -127,6 +127,8 @@ def get_scan_detail(scan_id):
             'success': True,
             'scan': {
                 'id': scan.id,
+                'resume_id': scan.resume_id,
+                'job_description_id': scan.job_description_id,
                 'score': round(scan.overall_match_score, 2),
                 'score_category': scan.get_score_category(),
                 'category_scores': {

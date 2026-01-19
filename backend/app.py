@@ -31,16 +31,17 @@ if PROJECT_ROOT not in sys.path:
 # App Factory
 # --------------------------------------------------
 def create_app():
-    app = Flask(
-        __name__,
-        template_folder="../frontend",
-        static_folder="../frontend/static"
-    )
+    # Flask will automatically find 'templates' and 'static' inside the 'backend' folder
+    app = Flask(__name__)
 
     # ---------------- CONFIG ----------------
-    secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
-    app.config["SECRET_KEY"] = secret_key
-    app.config["JWT_SECRET_KEY"] = secret_key
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "prod-secret-change-me")
+    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", os.getenv("SECRET_KEY", "jwt-secret-change-me"))
+    
+    # Environment control
+    ENV = os.getenv("FLASK_ENV", "production")
+    DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
+    app.config["DEBUG"] = DEBUG
 
     # SQLite (EB-safe)
     db_path = os.path.join(BASE_DIR, "app.db")
@@ -60,7 +61,10 @@ def create_app():
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=7)
 
     # ---------------- EXTENSIONS ----------------
-    CORS(app)
+    # In production, you might want to restrict this to your domain
+    # Example: CORS(app, origins=["https://yourdomain.com"])
+    allowed_origins = os.getenv("CORS_ORIGINS", "*")
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
     JWTManager(app)
 
     # ---------------- HEALTH ----------------

@@ -1,127 +1,56 @@
-# 🎯 Dr. Resume AI
+# Dr. Resume AI 🚀
 
-**AI-powered resume optimization and job matching platform**
+An advanced AI-powered Resume Analyzer and ATS Optimizer that helps users bridge the gap between their resumes and job descriptions.
 
-## 🚀 Quick Start
+## ✨ Features
+- **AI-Powered Scanning**: Compares resumes against job descriptions using NLP and LLM-enhanced algorithms.
+- **Skill Gap Analysis**: Identifies missing technical and soft skills.
+- **Scan History**: Keep track of all your past analyses with detailed metrics.
+- **Smart Dashboard**: Real-time stats, scan balance, and recent activity.
+- **Usage Limits**: Free tier with 5 scans; upgrade-ready logic.
+- **JWT Authentication**: Secure login and session management.
 
-1. **Install Python 3.8+** and pip
-2. **Install dependencies**: `pip install -r backend/requirements.txt`
-3. **Create environment file**: Add `.env` file in `backend/` folder with your secret keys
-4. **Run the app**: `python backend/app.py`
-5. **Open browser**: Go to `http://localhost:5000`
+## 🛠️ Tech Stack
+- **Backend**: Flask (Python), Flask-JWT-Extended, SQLAlchemy
+- **Database**: SQLite (Production-ready for Elastic Beanstalk)
+- **Frontend**: Vanilla HTML5, CSS3 (Premium Dark Mode UI), Modern JS
+- **AI/NLP**: NLTK, Spacy, Custom Matching Algorithms
+- **Deployment**: AWS Elastic Beanstalk
 
-## 📚 Documentation
+## 🚀 Getting Started
 
-- **📖 [Complete Project Overview](PROJECT_OVERVIEW.md)** - Detailed project documentation
-- **📁 [File-by-File Explanations](FILE_EXPLANATIONS.md)** - Code explanations for beginners
-- **🚀 [Setup Guide](SETUP_GUIDE.md)** - Step-by-step installation instructions
+### Local Setup
+1. Clone the repository.
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Run the application:
+   ```bash
+   python backend/app.py
+   ```
+4. Access at `http://localhost:5000`
 
-## 🌟 Features
+### Running Tests
+- **Backend Tests**: `python test_phase7.py`
+- **Production Verification**: `python PHASE9_VERIFICATION.py`
 
-- Resume upload and analysis (PDF/DOCX)
-- Job description processing
-- AI-powered keyword matching
-- Smart improvement suggestions
-- Match score calculation
-- Scan history tracking
-- User authentication & accounts
+## ☁️ Deployment (AWS Elastic Beanstalk)
+1. **Initialize EB**: `eb init`
+2. **Environment Configuration**:
+   - Set `SECRET_KEY` and `JWT_SECRET_KEY` in EB Configuration -> Environment properties.
+   - Set `FLASK_ENV=production`.
+3. **Deploy**: `eb deploy`
 
-## 📁 Project Structure
+## 📊 API Summary
+- `POST /api/register` - Create a new account
+- `POST /api/login` - Get access & refresh tokens
+- `POST /api/upload_resume` - Upload and parse resume
+- `POST /api/upload_jd` - Upload or save job description
+- `POST /api/scan` - Perform AI analysis (uses 1 scan credit)
+- `GET /api/scans` - List all past scans
+- `GET /api/scan/<id>` - Detailed report for a specific scan
+- `GET /api/dashboard/summary` - User stats and scan balance
 
-```
-resume-doctor.ai/
-├── 📁 backend/                    # Backend Flask Application
-│   ├── 📄 app.py                 # Main Flask application
-│   ├── 📄 models.py              # Database models
-│   ├── 📄 requirements.txt       # Python dependencies
-│   ├── 📁 routes/                # API endpoints
-│   ├── 📁 services/              # Business logic
-│   └── 📁 middleware/            # Authentication middleware
-├── 📁 frontend/                  # Frontend Web Interface
-│   ├── 📄 us10_dashboard.html    # Main dashboard
-│   ├── 📄 us10_login.html        # Login page
-│   ├── 📄 us10_register.html     # Registration page
-│   └── 📁 static/                # CSS, JS, assets
-├── 📁 database/                  # Database files
-├── 📁 uploads/                   # User uploaded files
-├── 📁 docs/                      # Technical documentation
-├── 📄 run_app.py                 # Application launcher
-└── 📄 start_app.bat              # Windows startup script
-```
-
-## 🔧 Technology Stack
-
-- **Backend**: Flask (Python), SQLite, JWT Authentication
-- **Frontend**: HTML5, CSS3, Vanilla JavaScript
-- **File Processing**: PyPDF2, python-docx
-- **AI/NLP**: Custom keyword extraction algorithms
-
-## 🎯 How It Works
-
-1. **Upload Resume** → System extracts text and keywords
-2. **Add Job Description** → System analyzes requirements
-3. **Generate Suggestions** → AI compares and creates recommendations
-4. **View Results** → See match scores and improvement suggestions
-5. **Track Progress** → Monitor your optimization journey
-
-## 🔐 Security Features
-
-- JWT token authentication
-- User data isolation
-- File validation and sanitization
-- SQL injection protection
-- CORS configuration
-
-## 🚀 Deployment
-
-The application can be deployed on:
-- Local development server
-- Heroku, AWS, DigitalOcean
-- Any platform supporting Python/Flask
-
-## 📈 Future Enhancements
-
-- OpenAI GPT integration
-- Resume templates
-- Job board integration
-- Mobile application
-- Advanced analytics
-
----
-
-**For detailed setup instructions, see [SETUP_GUIDE.md](SETUP_GUIDE.md)**
-
-## 🛠️ Development
-
-### Running the Application
-```bash
-# Install dependencies
-pip install -r backend/requirements.txt
-
-# Set up environment variables in backend/.env
-SECRET_KEY=your-secret-key
-JWT_SECRET_KEY=your-secret-key
-
-# Run the application
-python backend/app.py
-```
-
-### Project Status
-✅ **Fully Functional** - All core features working
-✅ **Authentication** - Login/register system
-✅ **File Upload** - PDF/DOCX resume processing
-✅ **AI Suggestions** - Basic and premium recommendations
-✅ **Match Scoring** - Resume-job compatibility analysis
-✅ **User Dashboard** - Complete user interface
-✅ **Data Persistence** - SQLite database storage
-
-## 📞 Support
-
-For questions or issues:
-1. Check the [SETUP_GUIDE.md](SETUP_GUIDE.md) for installation help
-2. Review [FILE_EXPLANATIONS.md](FILE_EXPLANATIONS.md) for code understanding
-3. See [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for complete documentation
-
----
-
-**Built with ❤️ for job seekers worldwide**
+## 📝 License
+Proprietary. Developed for Dr. Resume AI Project.
