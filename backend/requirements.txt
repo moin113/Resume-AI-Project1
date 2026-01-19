@@ -44,4 +44,4 @@ gunicorn
 # Additional dependencies for Local AI
 typing-extensions>=4.0.0
 
-psycopg2-binary
+
