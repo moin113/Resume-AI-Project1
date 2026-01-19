@@ -153,6 +153,52 @@ def upload_job_description():
             'error': str(e)
         }), 500
 
+# Alias for /upload_jd to match Phase 4 spec
+@jd_bp.route('/jd', methods=['POST'])
+@jwt_required()
+def create_job_description():
+    """
+    Create a new job description (Phase 4 spec)
+    Expected JSON:
+    {
+        "title": "Backend Developer",
+        "company_name": "ABC Corp",
+        "job_text": "Full job description text..."
+    }
+    """
+    return upload_job_description()
+
+@jd_bp.route('/jd/latest', methods=['GET'])
+@jwt_required()
+def get_latest_job_description():
+    """Get the latest job description for the current user (Phase 4.2)"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        # Get the most recent job description
+        latest_jd = JobDescription.query.filter_by(
+            user_id=current_user_id,
+            is_active=True
+        ).order_by(JobDescription.created_at.desc()).first()
+        
+        if not latest_jd:
+            return jsonify({
+                'success': False,
+                'message': 'No job descriptions found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'job_description': latest_jd.to_dict(include_text=True, include_keywords=True)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': 'Error fetching latest job description',
+            'error': str(e)
+        }), 500
+
 @jd_bp.route('/job_descriptions', methods=['GET'])
 @jwt_required()
 def get_user_job_descriptions():

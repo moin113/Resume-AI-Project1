@@ -49,8 +49,11 @@ def create_app():
 
     # Uploads
     upload_path = os.path.join(BASE_DIR, "uploads")
+    resume_upload_path = os.path.join(upload_path, "resumes")
     os.makedirs(upload_path, exist_ok=True)
+    os.makedirs(resume_upload_path, exist_ok=True)
     app.config["UPLOAD_FOLDER"] = upload_path
+    app.config["RESUME_UPLOAD_FOLDER"] = resume_upload_path
 
     # JWT
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
@@ -121,6 +124,42 @@ def create_app():
         logger.info("Auth blueprint registered (Phase 1)")
     except Exception as e:
         logger.error(f"Auth blueprint failed: {e}")
+        raise
+
+    # ---------------- UPLOAD BLUEPRINT (PHASE 3) ----------------
+    try:
+        from backend.routes.us05_upload_routes import upload_bp
+        app.register_blueprint(upload_bp)
+        logger.info("Upload blueprint registered (Phase 3)")
+    except Exception as e:
+        logger.error(f"Upload blueprint failed: {e}")
+        raise
+
+    # ---------------- JOB DESCRIPTION BLUEPRINT (PHASE 4) ----------------
+    try:
+        from backend.routes.us05_jd_routes import jd_bp
+        app.register_blueprint(jd_bp)
+        logger.info("Job Description blueprint registered (Phase 4)")
+    except Exception as e:
+        logger.error(f"JD blueprint failed: {e}")
+        raise
+
+    # ---------------- SCAN BLUEPRINT (PHASE 5 & 6) ----------------
+    try:
+        from backend.routes.us05_scan_routes import scan_bp
+        app.register_blueprint(scan_bp)
+        logger.info("Scan blueprint registered (Phase 5 & 6)")
+    except Exception as e:
+        logger.error(f"Scan blueprint failed: {e}")
+        raise
+
+    # ---------------- HISTORY BLUEPRINT (PHASE 7) ----------------
+    try:
+        from backend.routes.phase7_history_routes import phase7_bp
+        app.register_blueprint(phase7_bp)
+        logger.info("History blueprint registered (Phase 7)")
+    except Exception as e:
+        logger.error(f"History blueprint failed: {e}")
         raise
 
     return app

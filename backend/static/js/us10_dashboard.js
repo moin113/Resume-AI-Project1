@@ -15,40 +15,49 @@ document.addEventListener('DOMContentLoaded', function () {
     // Verify token is valid by making a test API call
     verifyTokenAndProceed();
 
-    // Load scan status
-    loadScanStatus();
+    // Load dashboard summary (Phase 7.3)
+    loadDashboardSummary();
 
     // Add event listeners
     addEventListeners();
 });
 
-function verifyTokenAndProceed() {
+async function loadDashboardSummary() {
     const token = localStorage.getItem('dr_resume_token');
-
-    // Make a simple API call to verify token validity
-    fetch(`${API_BASE_URL}/api/dashboard_stats`, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        }
-    })
-        .then(response => {
-            if (response.status === 401) {
-                // Token is invalid, clear it and redirect to login
-                console.log('❌ Token invalid, clearing and redirecting to login');
-                clearTokens();
-                window.location.href = '/login';
-                return;
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/dashboard/summary`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
             }
-            // Token is valid, proceed with dashboard initialization
-            initializeDashboard();
-        })
-        .catch(error => {
-            console.error('Error verifying token:', error);
-            // On network error, still try to initialize dashboard
-            initializeDashboard();
         });
+
+        if (response.status === 401) {
+            handleAuthError();
+            return;
+        }
+
+        const data = await response.json();
+        if (data.success) {
+            // Update stats cards
+            updateStatCard(0, data.total_scans || 0);
+            updateStatCard(1, data.average_score || 0);
+            updateStatCard(2, data.last_scan_score || 0);
+
+            // Update scan count/balance (Phase 6.6)
+            displayScanStatus(data.scan_balance);
+        }
+    } catch (error) {
+        console.error('Error loading dashboard summary:', error);
+    }
+}
+
+function handleAuthError() {
+    console.log('❌ Auth error, redirecting to login');
+    localStorage.removeItem('dr_resume_token');
+    localStorage.removeItem('dr_resume_user');
+    window.location.href = '/login';
 }
 
 function clearTokens() {
@@ -67,8 +76,8 @@ function initializeDashboard() {
     // Initialize scan count
     initializeScanCount();
 
-    // Load recent scan history
-    loadRecentScanHistory();
+    // Load recent scan history (Phase 7.1)
+    loadRecentScansList();
 
     // Load last used resume if available
     loadLastUsedResume();
@@ -471,71 +480,61 @@ QUALIFICATIONS:
 }
 
 function performActualScan(resumeText, jobDescription, token) {
-    console.log('🔍 Performing scan...');
-    showNotification('Performing enhanced LLM analysis...', 'info');
+    console.log('🔍 Performing scan Phase 5/6/7...');
+    showNotification('Analyzing resume against job description...', 'info');
 
-    fetch(`${API_BASE_URL}/api/analyze_realtime`, {
+    // Phase 5.1 - Call /api/scan
+    fetch(`${API_BASE_URL}/api/scan`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            resume_text: resumeText,
-            job_description_text: jobDescription
+            // If we have text but no ID, the backend will use the latest uploaded
+            // For a better experience, we should probably save first if text changed
+            // but for MVP /api/scan works with nulls
+            resume_id: null,
+            job_description_id: null
         })
     })
         .then(response => {
             if (response.status === 401) {
-                clearTokens();
-                window.location.href = '/login';
+                handleAuthError();
                 return;
+            }
+            if (response.status === 403) {
+                return response.json().then(data => {
+                    showNotification(data.message, 'warning');
+                    showUpgradeModal();
+                    throw new Error('Limit reached');
+                });
             }
             return response.json();
         })
         .then(data => {
-            if (data.success) {
-                console.log('📊 Enhanced LLM Analysis Result:', data.analysis);
+            if (data && data.success) {
+                console.log('✅ Scan successful:', data);
 
-                // Track the last used resume if there's an uploaded file
-                const uploadedFile = document.getElementById('resume-file').files[0];
-                if (uploadedFile) {
-                    // If there's an uploaded file, we should track it as the last used
-                    // This would require implementing resume upload tracking
-                    console.log('📝 Tracking uploaded file as last used resume');
-                }
+                // Store scan data for results page
+                localStorage.setItem('currentScanResult', JSON.stringify(data));
+                localStorage.setItem('last_scan_id', data.scan_id);
 
-                // Store enhanced scan data for results page
-                const scanData = {
-                    resumeText: resumeText,
-                    resumeFile: uploadedFile ? uploadedFile.name : null,
-                    jobDescription: jobDescription,
-                    timestamp: new Date().toISOString(),
-                    llmAnalysis: data.analysis,
-                    analysisType: 'enhanced_llm'
-                };
+                showNotification('✅ Scan completed successfully!', 'success');
 
-                localStorage.setItem('currentScanData', JSON.stringify(scanData));
-                showNotification('✅ Enhanced LLM analysis completed!', 'success');
-
-                // Update scan status if provided in response
-                if (data.scan_status) {
-                    displayScanStatus(data.scan_status);
-                } else {
-                    // Reload scan status from server
-                    loadScanStatus();
-                }
-
-                // Navigate to results page
-                window.location.href = '/results';
-            } else {
-                console.error('LLM Analysis failed:', data.message);
-                showNotification(data.message || 'LLM analysis failed', 'error');
+                // Redirect to results page (Phase 8.4)
+                setTimeout(() => {
+                    window.location.href = `/results?scan_id=${data.scan_id}`;
+                }, 1000);
+            } else if (data) {
+                showNotification(data.message || 'Scan failed', 'error');
             }
         })
         .catch(error => {
-            console.error('❌ LLM Analysis error:', error);
-            showNotification('Error performing LLM analysis', 'error');
+            console.error('❌ Scan error:', error);
+            if (error.message !== 'Limit reached') {
+                showNotification('Error performing scan. Please ensure you have uploaded a resume and JD.', 'error');
+            }
         });
 }
 
@@ -1140,47 +1139,40 @@ function animateNumber(element, start, end, duration) {
     requestAnimationFrame(update);
 }
 
-function loadRecentScanHistory() {
-    // Fetch real recent activity from API
+async function loadRecentScansList() {
     const token = localStorage.getItem('dr_resume_token');
-
-    fetch(`${API_BASE_URL}/api/recent_activity`, {
-        method: 'GET',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        }
-    })
-        .then(response => response.json())
-        .then(data => {
-            console.log('📊 Recent activity data:', data);
-
-            if (data.success && data.recent_activity && data.recent_activity.recent_scans && data.recent_activity.recent_scans.length > 0) {
-                // Use the most recent scan
-                const recentScan = data.recent_activity.recent_scans[0];
-                console.log('📋 Most recent scan:', recentScan);
-
-                const scanData = {
-                    fileName: recentScan.resume_title || 'Resume',
-                    jobDescription: `${recentScan.job_title || 'Job Description'} • ${recentScan.company_name || 'Company'}`,
-                    scanDate: new Date(recentScan.created_at).toLocaleDateString(),
-                    matchPercentage: Math.round(recentScan.match_score || 0),
-                    keywordCount: `${recentScan.match_score || 0}%`,
-                    keywordBreakdown: [] // Will be populated from detailed analysis if needed
-                };
-
-                console.log('📊 Formatted scan data:', scanData);
-                updateScanCard(scanData);
-            } else {
-                console.log('📭 No recent scans found, showing empty state');
-                // Show "no data" state
-                updateScanCardEmpty();
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/scans`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
             }
-        })
-        .catch(error => {
-            console.error('Error loading recent scan history:', error);
-            updateScanCardEmpty();
         });
+
+        if (response.status === 401) {
+            handleAuthError();
+            return;
+        }
+
+        const data = await response.json();
+        if (data.success && data.scans && data.scans.length > 0) {
+            const latestScan = data.scans[0];
+            updateScanCard({
+                fileName: latestScan.resume_title,
+                jobDescription: latestScan.job_title,
+                scanDate: new Date(latestScan.created_at).toLocaleDateString(),
+                matchPercentage: latestScan.score,
+                keywordCount: latestScan.score_category,
+                keywordBreakdown: []
+            });
+        } else {
+            updateScanCardEmpty();
+        }
+    } catch (error) {
+        console.error('Error loading recent scans:', error);
+        updateScanCardEmpty();
+    }
 }
 
 function updateScanCard(scanData) {
@@ -1502,9 +1494,9 @@ function handleFileSelect(event) {
                         console.log('🔍 Keywords extracted:', result.keywords_extracted);
 
                         // Refresh the dashboard data
-                        loadDashboardStats();
+                        loadDashboardSummary();
                         loadSavedResumes();
-                        loadRecentScanHistory();
+                        loadRecentScansList();
 
                         // Calculate matching score if both resume and JD exist
                         calculateMatchingScoreIfReady();
@@ -1747,6 +1739,8 @@ function saveJobDescription() {
 
                 // Refresh dashboard data
                 loadSavedJobDescriptions();
+                loadDashboardSummary();
+                loadRecentScansList();
 
                 // Clear the textarea
                 textarea.value = '';

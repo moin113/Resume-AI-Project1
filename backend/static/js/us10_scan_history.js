@@ -79,7 +79,7 @@ function loadScanHistory() {
         params.append('filter_score', currentFilter);
     }
 
-    fetch(`${API_BASE_URL}/api/history?${params}`, {
+    fetch(`${API_BASE_URL}/api/scans?${params}`, {
         method: 'GET',
         headers: {
             'Authorization': `Bearer ${token}`,
@@ -102,9 +102,17 @@ function loadScanHistory() {
             // Hide loading state
             if (loadingState) loadingState.style.display = 'none';
 
-            if (data.success && data.scan_history && data.scan_history.length > 0) {
-                displayScanHistory(data.scan_history);
-                updatePagination(data.pagination);
+            if (data.success && data.scans && data.scans.length > 0) {
+                displayScanHistory(data.scans);
+                // Mock pagination for now if count exists
+                updatePagination({
+                    page: currentPage,
+                    per_page: 10,
+                    total_items: data.count,
+                    total_pages: Math.ceil(data.count / 10),
+                    has_next: false,
+                    has_prev: false
+                });
             } else {
                 // Show empty state
                 if (emptyState) emptyState.style.display = 'block';
@@ -142,7 +150,7 @@ function createScanHistoryElement(scan) {
     const scanDiv = document.createElement('div');
     scanDiv.className = 'scan-history-item';
 
-    const scoreCategory = getScoreCategory(scan.match_score);
+    const scoreCategory = { class: scan.score_category, score_category: scan.score_category };
     const scanDate = new Date(scan.created_at).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
@@ -152,41 +160,22 @@ function createScanHistoryElement(scan) {
     });
 
     scanDiv.innerHTML = `
-        <div class="scan-item-header">
+        <div class="scan-item-header" onclick="window.location.href='/results?scan_id=${scan.id}'" style="cursor: pointer;">
             <div class="scan-item-info">
-                <h3 class="scan-item-title">${scan.resume.title || 'Untitled Resume'}</h3>
-                <p class="scan-item-subtitle">${scan.job_description.title || 'Untitled Job'} • ${scan.job_description.company_name || 'Unknown Company'}</p>
+                <h3 class="scan-item-title">${scan.resume_title || 'Untitled Resume'}</h3>
+                <p class="scan-item-subtitle">${scan.job_title || 'Untitled Job'}</p>
             </div>
             <div class="scan-item-score">
                 <div class="score-circle ${scoreCategory.class}">
-                    <span class="score-value">${Math.round(scan.match_score)}%</span>
+                    <span class="score-value">${Math.round(scan.score)}%</span>
                 </div>
-                <span class="score-label">${scoreCategory.label}</span>
-            </div>
-        </div>
-        
-        <div class="scan-item-details">
-            <div class="detail-item">
-                <span class="detail-label">Technical Skills:</span>
-                <span class="detail-value">${Math.round(scan.technical_score)}%</span>
-            </div>
-            <div class="detail-item">
-                <span class="detail-label">Soft Skills:</span>
-                <span class="detail-value">${Math.round(scan.soft_skills_score)}%</span>
-            </div>
-            <div class="detail-item">
-                <span class="detail-label">Other Keywords:</span>
-                <span class="detail-value">${Math.round(scan.other_keywords_score)}%</span>
-            </div>
-            <div class="detail-item">
-                <span class="detail-label">Keywords Matched:</span>
-                <span class="detail-value">${scan.matched_keywords}/${scan.total_jd_keywords}</span>
+                <span class="score-label">${scoreCategory.score_category}</span>
             </div>
         </div>
         
         <div class="scan-item-footer">
             <span class="scan-date">📅 ${scanDate}</span>
-            <span class="scan-algorithm">Algorithm: ${scan.algorithm_used}</span>
+            <button class="view-btn" onclick="window.location.href='/results?scan_id=${scan.id}'">View Full Analysis</button>
         </div>
     `;
 

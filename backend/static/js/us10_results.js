@@ -18,64 +18,109 @@ document.addEventListener('DOMContentLoaded', function () {
 function initializeResultsPage() {
     console.log('✅ Results page initialized');
 
-    // Load scan results from localStorage or URL params
+    // Load scan results (Phase 7.2)
     loadScanResults();
-
-    // Generate LLM analysis
-    generateLLMAnalysis();
 
     // Set up event listeners
     setupEventListeners();
 }
 
-function loadScanResults() {
-    // Get scan data from localStorage (set by dashboard when scan is performed)
-    const scanData = JSON.parse(localStorage.getItem('currentScanData') || '{}');
+async function loadScanResults() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const scanId = urlParams.get('scan_id');
+    const token = localStorage.getItem('dr_resume_token');
 
-    console.log('📊 Loading enhanced LLM scan data:', scanData);
+    if (scanId) {
+        console.log(`📊 Loading scan results for ID: ${scanId}...`);
+        showNotification('Loading scan results from server...', 'info');
 
-    if (scanData.llmAnalysis && scanData.analysisType === 'enhanced_llm') {
-        // Use enhanced LLM analysis results
-        console.log('🤖 Loading enhanced LLM analysis results...');
-        const analysis = scanData.llmAnalysis;
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/scan/${scanId}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
 
-        console.log('✅ Enhanced LLM Analysis loaded:', analysis);
+            if (response.status === 401) {
+                handleAuthError();
+                return;
+            }
 
-        // Store analysis results
-        window.currentAnalysis = analysis;
-        window.scanData = scanData;
+            const data = await response.json();
+            if (data.success && data.scan) {
+                const scan = data.scan;
+                console.log('✅ Scan data loaded:', scan);
 
-        // Update match rate with enhanced scoring
-        updateEnhancedMatchRate(analysis);
-
-        // Display enhanced analysis results
-        displayEnhancedAnalysisResults(analysis);
-
-        // Also populate the standard sections with detailed data
-        populateDetailedAnalysisSections(analysis);
-
-    } else if (scanData.resumeText && scanData.jobDescription) {
-        // Fallback to basic analysis for backward compatibility
-        console.log('🔍 Performing fallback text analysis...');
-        const analysisEngine = new TextAnalysisEngine();
-        const analysis = analysisEngine.analyzeTexts(scanData.resumeText, scanData.jobDescription);
-
-        console.log('✅ Fallback analysis complete:', analysis);
-
-        // Store analysis results
-        window.currentAnalysis = analysis;
-
-        // Update match rate
-        updateMatchRate(analysis.matchRate);
-
-        // Update progress bars
-        updateProgressBars(analysis.progressStats);
-
+                // Update UI (Phase 8.4)
+                updateMatchRate(scan.score);
+                displayScanDetails(scan);
+                showNotification('Results loaded successfully', 'success');
+            } else {
+                showNotification('Scan not found or access denied', 'error');
+            }
+        } catch (error) {
+            console.error('Error loading scan:', error);
+            showNotification('Failed to load scan results', 'error');
+        }
     } else {
-        console.log('⚠️ No scan data found, using sample data');
-        // Fallback to sample data for demo
-        updateMatchRate(72);
-        updateProgressBarsDefault();
+        // Fallback to localStorage (Phase 8.4 fallback)
+        const scanResult = JSON.parse(localStorage.getItem('currentScanResult') || '{}');
+        if (scanResult.success) {
+            // Mock the structure or reload if possible
+            console.log('📊 Using data from localStorage');
+            // For better experience, we should redirect or show something
+        }
+    }
+}
+
+function handleAuthError() {
+    localStorage.removeItem('dr_resume_token');
+    window.location.href = '/login';
+}
+
+function displayScanDetails(scan) {
+    // Update summary
+    const summaryEl = document.getElementById('ai-summary-text');
+    if (summaryEl) {
+        summaryEl.textContent = scan.summary;
+    }
+
+    // Update charts/scores
+    updateEnhancedMatchRate(scan);
+
+    // Populate skills sections
+    populateSkillsFromScan(scan);
+}
+
+function populateSkillsFromScan(scan) {
+    // Hard skills
+    const hardSkillsBody = document.querySelector('#hard-skills-table tbody');
+    if (hardSkillsBody) {
+        hardSkillsBody.innerHTML = '';
+
+        // Matched
+        scan.matched_skills.forEach(skill => {
+            const row = `<tr>
+                <td class="skill-name">${skill}</td>
+                <td class="skill-count found">Found</td>
+                <td class="skill-count found">Required</td>
+                <td class="match-icon found">✓</td>
+            </tr>`;
+            hardSkillsBody.insertAdjacentHTML('beforeend', row);
+        });
+
+        // Missing
+        scan.missing_skills.forEach(skill => {
+            const row = `<tr>
+                <td class="skill-name">${skill}</td>
+                <td class="skill-count missing">Missing</td>
+                <td class="skill-count found">Required</td>
+                <td class="match-icon missing">✗</td>
+            </tr>`;
+            hardSkillsBody.insertAdjacentHTML('beforeend', row);
+        });
     }
 }
 
