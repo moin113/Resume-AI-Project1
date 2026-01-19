@@ -28,10 +28,14 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 # --------------------------------------------------
-# App Factory (ONLY ONE)
+# App Factory
 # --------------------------------------------------
 def create_app():
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        template_folder="../frontend",
+        static_folder="../frontend/static"
+    )
 
     # ---------------- CONFIG ----------------
     secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
@@ -70,11 +74,6 @@ def create_app():
     def ping():
         return {"message": "API is alive"}, 200
 
-    # ---------------- PHASE 1 AUTH TEST ----------------
-    @app.route("/api/auth/test")
-    def auth_test():
-        return {"auth": "ok"}, 200
-
     # ---------------- UI ROUTES ----------------
     @app.route("/")
     @app.route("/landing")
@@ -105,7 +104,7 @@ def create_app():
     def results():
         return render_template("us10_results.html")
 
-    # ---------------- DATABASE (SAFE) ----------------
+    # ---------------- DATABASE ----------------
     try:
         from backend.models import db
         db.init_app(app)
@@ -115,8 +114,14 @@ def create_app():
     except Exception as e:
         logger.warning(f"Database skipped: {e}")
 
-    # ---------------- BLUEPRINTS (OFF) ----------------
-    logger.info("Blueprints disabled (Phase 1)")
+    # ---------------- AUTH BLUEPRINT (PHASE 1) ----------------
+    try:
+        from backend.routes.us05_auth_routes import auth_bp
+        app.register_blueprint(auth_bp)
+        logger.info("Auth blueprint registered (Phase 1)")
+    except Exception as e:
+        logger.error(f"Auth blueprint failed: {e}")
+        raise
 
     return app
 
