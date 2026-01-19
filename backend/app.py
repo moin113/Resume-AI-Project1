@@ -43,9 +43,18 @@ def create_app():
     DEBUG = os.getenv("FLASK_DEBUG", "0") == "1"
     app.config["DEBUG"] = DEBUG
 
-    # SQLite (EB-safe)
-    db_path = os.path.join(BASE_DIR, "app.db")
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+    # SQLite (EB-safe) - Use a defined path or fallback to local
+    db_env = os.getenv("DATABASE_URL")
+    if db_env:
+        if db_env.startswith("sqlite://"):
+            app.config["SQLALCHEMY_DATABASE_URI"] = db_env
+        else:
+            # If it's just a path, make it a sqlite URI
+            app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_env}"
+    else:
+        default_db_path = os.path.join(BASE_DIR, "app.db")
+        app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{default_db_path}"
+    
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
     # Uploads
@@ -79,7 +88,7 @@ def create_app():
     # ---------------- HARD API TEST ----------------
     @app.route("/api/ping")
     def ping():
-        return {"message": "API is alive"}, 200
+        return jsonify({"message": "API is alive"}), 200
 
     # ---------------- UI ROUTES ----------------
     @app.route("/")

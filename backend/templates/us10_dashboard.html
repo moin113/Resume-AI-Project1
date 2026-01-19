@@ -40,8 +40,8 @@
             <!-- Welcome Banner -->
             <section class="welcome-banner">
                 <div class="welcome-content">
-                    <h1 class="welcome-title">Welcome, Sarah</h1>
-                    <p class="welcome-subtitle">You have 3 new job matches today</p>
+                    <h1 class="welcome-title">Welcome</h1>
+                    <p class="welcome-subtitle">Get started by uploading your resume</p>
                 </div>
                 <button class="new-resume-btn">New Resume</button>
             </section>
@@ -53,35 +53,10 @@
                     <a href="/history" class="view-all-link">View All →</a>
                 </div>
 
-                <div class="scan-card">
-                    <div class="scan-header">
-                        <div class="document-icon">📄</div>
-                        <h3 class="file-name">Md_Moin_Ashrai_2_1 docx</h3>
-                    </div>
-
-                    <div class="scan-meta">
-                        <p class="job-description">Job Description from Dashboard at 1 Unknown Company</p>
-                        <p class="scan-date">2016 21 2 297:R6 pm</p>
-                    </div>
-
-                    <div class="score-summary">
-                        <div class="match-percentage">28.48 %</div>
-                        <div class="keyword-count">9.55 keywords</div>
-                    </div>
-
-                    <div class="keyword-breakdown">
-                        <div class="keyword-item">
-                            <div class="keyword-percentage">10.34 %</div>
-                            <div class="keyword-label">Tustrared</div>
-                        </div>
-                        <div class="keyword-item">
-                            <div class="keyword-percentage">100 %</div>
-                            <div class="keyword-label">Exhilones</div>
-                        </div>
-                        <div class="keyword-item">
-                            <div class="keyword-percentage">4.35 %</div>
-                            <div class="keyword-label">Office</div>
-                        </div>
+                <div id="recent-scans-list">
+                    <!-- Scan cards will be dynamically loaded here (Phase 7.1) -->
+                    <div class="empty-state" id="no-scans-message">
+                        <p>No recent scans found. Upload a resume to get started!</p>
                     </div>
                 </div>
             </section>

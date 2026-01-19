@@ -1041,17 +1041,20 @@ function updateUserGreeting(userData) {
 
     // Update welcome title with user's first name
     const welcomeTitleElement = document.querySelector('.welcome-title');
-    if (welcomeTitleElement && userData.first_name) {
-        welcomeTitleElement.textContent = `Welcome, ${userData.first_name}`;
-        console.log(`✅ Updated welcome title to: Welcome, ${userData.first_name}`);
-    } else {
-        console.log('❌ Could not update welcome title - element or first_name not found');
-        console.log('Element found:', !!welcomeTitleElement);
-        console.log('First name:', userData.first_name);
-        // Fallback to default name if no user data
-        if (welcomeTitleElement) {
-            welcomeTitleElement.textContent = 'Welcome, Sarah';
+    if (welcomeTitleElement) {
+        if (userData.first_name) {
+            welcomeTitleElement.textContent = `Welcome, ${userData.first_name}`;
+            console.log(`✅ Updated welcome title to: Welcome, ${userData.first_name}`);
+        } else {
+            welcomeTitleElement.textContent = 'Welcome';
+            console.log('ℹ️ No first_name found, using generic Welcome');
         }
+    }
+
+    // Update matches subtitle (Phase 7.3)
+    const welcomeSubtitle = document.querySelector('.welcome-subtitle');
+    if (welcomeSubtitle && userData.first_name) {
+        welcomeSubtitle.textContent = 'Good to see you again!';
     }
 
     // Also update any user greeting elements if they exist
@@ -1176,38 +1179,54 @@ async function loadRecentScansList() {
 }
 
 function updateScanCard(scanData) {
-    // Update file name
-    const fileNameElement = document.querySelector('.file-name');
-    if (fileNameElement) {
-        fileNameElement.textContent = scanData.fileName;
-    }
+    const listContainer = document.getElementById('recent-scans-list');
+    if (!listContainer) return;
 
-    // Update job description
-    const jobDescElement = document.querySelector('.job-description');
-    if (jobDescElement) {
-        jobDescElement.textContent = scanData.jobDescription;
-    }
+    // Clear container
+    listContainer.innerHTML = '';
 
-    // Update scan date
-    const scanDateElement = document.querySelector('.scan-date');
-    if (scanDateElement) {
-        scanDateElement.textContent = scanData.scanDate;
-    }
+    const scoreClass = getScoreCategoryClass(scanData.matchPercentage);
 
-    // Update match percentage
-    const matchPercentageElement = document.querySelector('.match-percentage');
-    if (matchPercentageElement) {
-        matchPercentageElement.textContent = `${scanData.matchPercentage} %`;
-    }
+    const cardHtml = `
+        <div class="scan-card">
+            <div class="scan-header">
+                <div class="document-icon">📄</div>
+                <h3 class="file-name">${scanData.fileName}</h3>
+            </div>
 
-    // Update keyword count
-    const keywordCountElement = document.querySelector('.keyword-count');
-    if (keywordCountElement) {
-        keywordCountElement.textContent = scanData.keywordCount;
-    }
+            <div class="scan-meta">
+                <p class="job-description">${scanData.jobDescription}</p>
+                <p class="scan-date">${scanData.scanDate}</p>
+            </div>
 
-    // Update keyword breakdown
-    updateKeywordBreakdown(scanData.keywordBreakdown);
+            <div class="score-summary">
+                <div class="match-percentage ${scoreClass}">${scanData.matchPercentage}%</div>
+                <div class="keyword-count">${scanData.keywordCount} match</div>
+            </div>
+
+            <div class="keyword-breakdown">
+                ${scanData.keywordBreakdown.length > 0 ? scanData.keywordBreakdown.map(kb => `
+                    <div class="keyword-item">
+                        <div class="keyword-percentage">${kb.percentage}%</div>
+                        <div class="keyword-label">${kb.label}</div>
+                    </div>
+                `).join('') : `
+                    <div class="keyword-item">
+                        <button class="view-details-btn" onclick="window.location.href='/history'">View Full History</button>
+                    </div>
+                `}
+            </div>
+        </div>
+    `;
+
+    listContainer.innerHTML = cardHtml;
+}
+
+function getScoreCategoryClass(score) {
+    if (score >= 80) return 'excellent';
+    if (score >= 60) return 'good';
+    if (score >= 40) return 'fair';
+    return 'poor';
 }
 
 function updateKeywordBreakdown(keywords) {
@@ -1230,50 +1249,15 @@ function updateKeywordBreakdown(keywords) {
 }
 
 function updateScanCardEmpty() {
-    // Update file name
-    const fileNameElement = document.querySelector('.file-name');
-    if (fileNameElement) {
-        fileNameElement.textContent = 'No resumes uploaded yet';
-    }
+    const listContainer = document.getElementById('recent-scans-list');
+    if (!listContainer) return;
 
-    // Update job description
-    const jobDescElement = document.querySelector('.job-description');
-    if (jobDescElement) {
-        jobDescElement.textContent = 'Upload a resume and job description to see analysis';
-    }
-
-    // Update scan date
-    const scanDateElement = document.querySelector('.scan-date');
-    if (scanDateElement) {
-        scanDateElement.textContent = '-';
-    }
-
-    // Update match percentage
-    const matchPercentageElement = document.querySelector('.match-percentage');
-    if (matchPercentageElement) {
-        matchPercentageElement.textContent = '0 %';
-    }
-
-    // Update keyword count
-    const keywordCountElement = document.querySelector('.keyword-count');
-    if (keywordCountElement) {
-        keywordCountElement.textContent = '0 keywords';
-    }
-
-    // Clear keyword breakdown
-    const keywordItems = document.querySelectorAll('.keyword-item');
-    keywordItems.forEach(item => {
-        const percentageElement = item.querySelector('.keyword-percentage');
-        const labelElement = item.querySelector('.keyword-label');
-
-        if (percentageElement) {
-            percentageElement.textContent = '0 %';
-        }
-
-        if (labelElement) {
-            labelElement.textContent = 'No data';
-        }
-    });
+    listContainer.innerHTML = `
+        <div class="empty-state" id="no-scans-message" style="padding: 40px; text-align: center; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.1);">
+            <p style="color: var(--text-muted); margin-bottom: 20px;">No recent scans found. Upload a resume and Job Description to get started!</p>
+            <button class="new-resume-btn" onclick="document.getElementById('resume-upload').click()" style="margin: 0 auto;">Upload Resume</button>
+        </div>
+    `;
 }
 
 function loadSavedResumes() {

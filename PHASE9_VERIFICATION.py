@@ -3,7 +3,8 @@ import os
 import uuid
 import time
 
-BASE_URL = "http://localhost:5000"
+# Target URL (Local or Production)
+BASE_URL = os.getenv("APP_URL", "http://localhost:5000")
 
 def test_phase_9_e2e():
     print("\n--- Starting Phase 9 Production Verification ---")
