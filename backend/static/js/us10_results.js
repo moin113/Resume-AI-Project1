@@ -81,17 +81,28 @@ function handleAuthError() {
 }
 
 function displayScanDetails(scan) {
+    console.log('📊 displayScanDetails called with:', scan);
+
+    // Store globally for other functions to access
+    window.currentAnalysis = scan;
+
     // Update summary
     const summaryEl = document.getElementById('ai-summary-text');
     if (summaryEl) {
-        summaryEl.textContent = scan.summary;
+        summaryEl.textContent = scan.summary || 'Scan results analyzed successfully.';
     }
 
     // Update charts/scores
     updateEnhancedMatchRate(scan);
 
-    // Populate skills sections
-    populateSkillsFromScan(scan);
+    // Populate skills sections based on data available
+    if (scan.detailed_analysis && (scan.detailed_analysis.matched_skills || scan.detailed_analysis.missing_skills)) {
+        console.log('🎯 Using enhanced detailed analysis for UI');
+        populateDetailedAnalysisSections(scan);
+    } else {
+        console.log('📝 Using basic skills population');
+        populateSkillsFromScan(scan);
+    }
 }
 
 function populateSkillsFromScan(scan) {

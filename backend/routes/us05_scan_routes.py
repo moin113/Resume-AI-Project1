@@ -164,65 +164,42 @@ def perform_scan():
         # Track scan duration
         scan_start_time = time.time()
         
-        # PHASE 5.4: AI / MATCHING LOGIC (MVP - Keyword-based)
+        # PHASE 5.4: AI / MATCHING LOGIC (NLP-based)
         try:
-            # Get keywords
-            resume_keywords = resume.get_keywords()
-            jd_keywords = job_description.get_keywords()
+            from backend.services.enhanced_matching_service import RealTimeLLMService
+            from backend.services.dynamic_suggestions_service import DynamicSuggestionsService
             
-            # Combine all keywords into sets for comparison
-            resume_all_keywords = set()
-            for key in ['technical_skills', 'soft_skills', 'other_keywords']:
-                resume_all_keywords.update([k.lower() for k in resume_keywords.get(key, [])])
+            llm_service = RealTimeLLMService()
+            suggestions_service = DynamicSuggestionsService()
             
-            jd_all_keywords = set()
-            for key in ['technical_skills', 'soft_skills', 'other_keywords']:
-                jd_all_keywords.update([k.lower() for k in jd_keywords.get(key, [])])
+            current_app.logger.info(f"🚀 Starting Enhanced NLP Scan for user {current_user_id}")
             
-            # Calculate matched and missing skills
-            matched_keywords = resume_all_keywords.intersection(jd_all_keywords)
-            missing_keywords = jd_all_keywords - resume_all_keywords
+            # Perform enhanced analysis
+            analysis_results = llm_service.analyze_resume_realtime(resume.extracted_text, job_description.job_text)
             
-            # Calculate scores
-            if len(jd_all_keywords) > 0:
-                overall_score = (len(matched_keywords) / len(jd_all_keywords)) * 100
-            else:
-                overall_score = 0
+            if not analysis_results.get('success'):
+                current_app.logger.error(f"❌ NLP Analysis failed: {analysis_results.get('error')}")
+                raise Exception(analysis_results.get('error', 'Unknown error in NLP analysis'))
             
-            # Calculate category scores
-            resume_tech = set([k.lower() for k in resume_keywords.get('technical_skills', [])])
-            jd_tech = set([k.lower() for k in jd_keywords.get('technical_skills', [])])
+            # Extract results
+            overall_score = analysis_results['overall_match_score']
+            category_scores = analysis_results['category_scores']
+            detailed_analysis = analysis_results['detailed_analysis']
+            recommendations = analysis_results['recommendations']
+            keyword_analysis = analysis_results['keyword_analysis']
             
-            resume_soft = set([k.lower() for k in resume_keywords.get('soft_skills', [])])
-            jd_soft = set([k.lower() for k in jd_keywords.get('soft_skills', [])])
-            
-            technical_score = (len(resume_tech.intersection(jd_tech)) / len(jd_tech) * 100) if len(jd_tech) > 0 else 0
-            soft_skills_score = (len(resume_soft.intersection(jd_soft)) / len(jd_soft) * 100) if len(jd_soft) > 0 else 0
-            
-            # Generate summary
+            # Generate summary based on the enhanced score
             if overall_score >= 80:
-                summary = f"Excellent match! Your resume aligns well with the job requirements. You have {len(matched_keywords)} matching skills."
+                summary = f"Excellent match! Your resume aligns well with {overall_score}% compatibility. {len(detailed_analysis['matched_skills'])} key skills were identified."
             elif overall_score >= 60:
-                summary = f"Good match! Your resume covers most requirements. Consider adding: {', '.join(list(missing_keywords)[:3])}."
+                summary = f"Good match! You have {overall_score}% compatibility. Your experience covers most requirements, but there are some missing keywords."
             elif overall_score >= 40:
-                summary = f"Fair match. Your resume has {len(matched_keywords)} matching skills but is missing key requirements: {', '.join(list(missing_keywords)[:5])}."
+                summary = f"Fair match. Your resume has {overall_score}% compatibility. Significant improvements needed to better align with this role."
             else:
-                summary = f"Low match. Consider strengthening your resume with these skills: {', '.join(list(missing_keywords)[:5])}."
-            
-            # Prepare detailed analysis
-            detailed_analysis = {
-                'matched_skills': list(matched_keywords),
-                'missing_skills': list(missing_keywords),
-                'total_resume_keywords': len(resume_all_keywords),
-                'total_jd_keywords': len(jd_all_keywords),
-                'matched_count': len(matched_keywords),
-                'missing_count': len(missing_keywords)
-            }
-            
-            category_scores = {
-                'technical': round(technical_score, 2),
-                'soft_skills': round(soft_skills_score, 2)
-            }
+                summary = f"Low match ({overall_score}%). This role requires more alignment in technical and soft skills."
+
+            # Add summary to detailed analysis for persistence
+            detailed_analysis['summary'] = summary
             
             scan_duration = time.time() - scan_start_time
             
@@ -234,39 +211,31 @@ def perform_scan():
                 overall_match_score=overall_score,
                 category_scores=category_scores,
                 detailed_analysis=detailed_analysis,
-                recommendations=[],  # Can be enhanced later
-                keyword_analysis={
-                    'resume_keywords': list(resume_all_keywords),
-                    'jd_keywords': list(jd_all_keywords),
-                    'matched': list(matched_keywords),
-                    'missing': list(missing_keywords)
-                },
-                ats_compatibility=overall_score,  # Simple ATS score for now
+                recommendations=recommendations,
+                keyword_analysis=keyword_analysis,
+                ats_compatibility=category_scores.get('ats_compatibility', overall_score),
                 scan_type='stored',
-                algorithm_used='keyword_overlap',
+                algorithm_used='llm_enhanced',
                 scan_duration=scan_duration
             )
             
             db.session.add(scan_history)
             db.session.commit()
             
-            current_app.logger.info(f"✅ Scan completed. ID: {scan_history.id}, Score: {overall_score:.2f}%")
+            current_app.logger.info(f"✅ Enhanced Scan completed. ID: {scan_history.id}, Score: {overall_score:.2f}%")
             
             # PHASE 5.6: RESPONSE RETURN (PHASE 6.6: Include scan balance)
             return jsonify({
                 'success': True,
                 'scan_id': scan_history.id,
                 'score': round(overall_score, 2),
-                'matched_skills': list(matched_keywords),
-                'missing_skills': list(missing_keywords),
+                'matched_skills': [s['skill'] if isinstance(s, dict) else s for s in detailed_analysis.get('matched_skills', [])],
+                'missing_skills': [s['skill'] if isinstance(s, dict) else s for s in detailed_analysis.get('missing_skills', [])],
                 'summary': summary,
                 'category_scores': category_scores,
-                'scan_balance': {
-                    'free_scans_remaining': user.free_scans_remaining,
-                    'total_scans_used': user.total_scans_used,
-                    'can_scan': user.can_perform_scan(),
-                    'is_premium': user.is_premium()
-                }
+                'recommendations': recommendations,
+                'scan_status': user.get_scan_status(),
+                'scan_balance': user.get_scan_status()
             }), 200
             
         except Exception as matching_error:
@@ -318,6 +287,7 @@ def get_scan_status():
         
         return jsonify({
             'success': True,
+            'scan_status': user.get_scan_status(),
             'scan_balance': user.get_scan_status()
         }), 200
         

@@ -130,14 +130,12 @@ def get_scan_detail(scan_id):
                 'resume_id': scan.resume_id,
                 'job_description_id': scan.job_description_id,
                 'score': round(scan.overall_match_score, 2),
+                'overall_match_score': round(scan.overall_match_score, 2), # Frontend looks for this
                 'score_category': scan.get_score_category(),
-                'category_scores': {
-                    'technical': round(category_scores.get('technical', 0), 2),
-                    'soft_skills': round(category_scores.get('soft_skills', 0), 2)
-                },
+                'category_scores': category_scores,
                 'matched_skills': detailed_analysis.get('matched_skills', []),
                 'missing_skills': detailed_analysis.get('missing_skills', []),
-                'summary': summary,
+                'summary': detailed_analysis.get('summary', summary),
                 'recommendations': recommendations,
                 'keyword_analysis': keyword_analysis,
                 'ats_compatibility': round(scan.ats_compatibility, 2),
@@ -201,6 +199,7 @@ def get_dashboard_summary():
             'total_scans': total_scans,
             'average_score': average_score,
             'last_scan_score': last_scan_score,
+            'scan_status': scan_balance,
             'scan_balance': scan_balance
         }), 200
         
