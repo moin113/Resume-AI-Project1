@@ -13,7 +13,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 
 # --------------------------------------------------
-# Basic logging
+# Logging
 # --------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dr_resume")
@@ -37,11 +37,8 @@ def create_app():
         static_folder="../frontend/static"
     )
 
-    # --------------------------------------------------
-    # Configuration
-    # --------------------------------------------------
+    # ---------------- CONFIG ----------------
     secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
-
     app.config["SECRET_KEY"] = secret_key
     app.config["JWT_SECRET_KEY"] = secret_key
 
@@ -55,37 +52,34 @@ def create_app():
     os.makedirs(upload_path, exist_ok=True)
     app.config["UPLOAD_FOLDER"] = upload_path
 
-    # JWT config
+    # JWT
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=1)
     app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=7)
 
-    # --------------------------------------------------
-    # Extensions
-    # --------------------------------------------------
+    # ---------------- EXTENSIONS ----------------
     CORS(app)
     JWTManager(app)
 
-    # --------------------------------------------------
-    # Health Check (REQUIRED FOR EB)
-    # --------------------------------------------------
+    # ---------------- HEALTH ----------------
     @app.route("/health")
     def health():
         return jsonify(
-            status="ok",
             service="resume-doctor-ai",
+            status="ok",
             timestamp=datetime.utcnow().isoformat()
         ), 200
 
-    # --------------------------------------------------
-    # HARD API TEST ENDPOINT (VERY IMPORTANT)
-    # --------------------------------------------------
+    # ---------------- HARD API TEST ----------------
     @app.route("/api/ping")
     def ping():
         return {"message": "API is alive"}, 200
 
-    # --------------------------------------------------
-    # Frontend Routes
-    # --------------------------------------------------
+    # ---------------- PHASE 1 AUTH TEST ----------------
+    @app.route("/api/auth/test")
+    def auth_test():
+        return {"auth": "ok"}, 200
+
+    # ---------------- UI ROUTES ----------------
     @app.route("/")
     @app.route("/landing")
     def landing():
@@ -115,9 +109,7 @@ def create_app():
     def results():
         return render_template("us10_results.html")
 
-    # --------------------------------------------------
-    # Database init (SAFE)
-    # --------------------------------------------------
+    # ---------------- DATABASE (SAFE) ----------------
     try:
         from backend.models import db
         db.init_app(app)
@@ -127,22 +119,19 @@ def create_app():
     except Exception as e:
         logger.warning(f"Database skipped: {e}")
 
-    # --------------------------------------------------
-    # Blueprints TEMPORARILY DISABLED
-    # --------------------------------------------------
-    logger.info("Blueprints temporarily disabled for EB health check")
+    # ---------------- BLUEPRINTS (OFF) ----------------
+    logger.info("Blueprints disabled (Phase 1)")
 
-    # ✅ THIS WAS MISSING — ABSOLUTELY REQUIRED
     return app
 
 
 # --------------------------------------------------
-# Gunicorn entry point (IMPORTANT)
+# Gunicorn entry point
 # --------------------------------------------------
 app = create_app()
 
 # --------------------------------------------------
-# Local development run
+# Local run
 # --------------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
