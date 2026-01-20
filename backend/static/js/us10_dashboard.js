@@ -601,6 +601,27 @@ function showNotification(message, type) {
 
 let powerEditEnabled = false;
 function togglePowerEdit() {
+    // Check if user is premium
+    const userJson = localStorage.getItem('dr_resume_user');
+    let isPremium = false;
+
+    if (userJson) {
+        try {
+            const user = JSON.parse(userJson);
+            isPremium = user.is_premium || false;
+        } catch (e) {
+            console.error('Error parsing user data:', e);
+        }
+    }
+
+    // If not premium, show upgrade modal
+    if (!isPremium) {
+        showUpgradeModal();
+        showNotification('Power Edit is a Pro feature. Upgrade to unlock!', 'info');
+        return;
+    }
+
+    // Premium users can use Power Edit
     powerEditEnabled = !powerEditEnabled;
     const body = document.body;
     const btn = document.querySelector('.power-edit-btn');
@@ -633,6 +654,18 @@ function handleAuthError() {
     window.location.href = '/login';
 }
 
+function contactSales() {
+    showNotification('Redirecting to sales contact...', 'info');
+    // You can replace this with actual contact form or email
+    window.location.href = 'mailto:sales@resumedoctor.ai?subject=Enterprise Plan Inquiry';
+}
+
+function upgradeToPro() {
+    showNotification('Redirecting to Pro upgrade...', 'info');
+    // You can replace this with actual payment/upgrade flow
+    window.location.href = '/account?upgrade=pro';
+}
+
 // Global Exports for HTML onclicks
 window.performScan = performScan;
 window.triggerFileUpload = triggerFileUpload;
@@ -644,3 +677,5 @@ window.handleJobDescriptionInput = handleJobDescriptionInput;
 window.handleLogout = handleLogout;
 window.showUpgradeModal = showUpgradeModal;
 window.togglePowerEdit = togglePowerEdit;
+window.contactSales = contactSales;
+window.upgradeToPro = upgradeToPro;

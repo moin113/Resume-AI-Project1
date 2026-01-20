@@ -52,6 +52,18 @@ class RealTimeLLMService:
             self.stop_words = {'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
                              'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 
                              'to', 'was', 'will', 'with'}
+        
+        # Enhanced skill synonyms for intelligent matching
+        self.skill_synonyms = {
+            'javascript': ['js', 'node.js', 'nodejs', 'ecmascript', 'es6', 'typescript', 'ts', 'react', 'vue', 'angular'],
+            'python': ['py', 'python3', 'django', 'flask', 'fastapi', 'pandas', 'numpy'],
+            'artificial intelligence': ['ai', 'machine learning', 'ml', 'deep learning', 'neural networks', 'nlp'],
+            'cloud': ['aws', 'amazon web services', 'azure', 'gcp', 'google cloud', 'cloud computing'],
+            'devops': ['ci/cd', 'docker', 'kubernetes', 'jenkins', 'terraform', 'ansible'],
+            'database': ['sql', 'nosql', 'mysql', 'postgresql', 'mongodb', 'redis', 'db'],
+            'project management': ['agile', 'scrum', 'kanban', 'jira', 'pmp', 'project manager'],
+            'api': ['rest', 'restful', 'graphql', 'microservices', 'web services', 'json']
+        }
 
     def _get_nlp(self):
         """Get or load the spaCy model once"""
@@ -83,18 +95,6 @@ class RealTimeLLMService:
         except Exception as e:
             logger.error(f"⚠️ spaCy initialization failed: {e}. Using basic NLP fallback.")
             return None
-
-        # Enhanced skill synonyms for intelligent matching
-        self.skill_synonyms = {
-            'javascript': ['js', 'node.js', 'nodejs', 'ecmascript', 'es6', 'typescript', 'ts', 'react', 'vue', 'angular'],
-            'python': ['py', 'python3', 'django', 'flask', 'fastapi', 'pandas', 'numpy'],
-            'artificial intelligence': ['ai', 'machine learning', 'ml', 'deep learning', 'neural networks', 'nlp'],
-            'cloud': ['aws', 'amazon web services', 'azure', 'gcp', 'google cloud', 'cloud computing'],
-            'devops': ['ci/cd', 'docker', 'kubernetes', 'jenkins', 'terraform', 'ansible'],
-            'database': ['sql', 'nosql', 'mysql', 'postgresql', 'mongodb', 'redis', 'db'],
-            'project management': ['agile', 'scrum', 'kanban', 'jira', 'pmp', 'project manager'],
-            'api': ['rest', 'restful', 'graphql', 'microservices', 'web services', 'json']
-        }
 
     def _preprocess_text(self, text: str) -> str:
         """Preprocess text for NLP analysis"""
