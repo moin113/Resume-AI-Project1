@@ -2,8 +2,8 @@ import logging
 import re
 import json
 import os
+import time
 from typing import Dict, List, Tuple, Set, Optional
-from collections import Counter
 from datetime import datetime
 
 import spacy
@@ -14,12 +14,21 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-from backend.models import db, Resume, JobDescription, MatchScore
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Ensure NLTK data is downloaded
+def download_nltk_resources():
+    try:
+        nltk.download('punkt', quiet=True)
+        nltk.download('stopwords', quiet=True)
+        nltk.download('averaged_perceptron_tagger', quiet=True)
+        logger.info("✅ NLTK resources downloaded successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to download NLTK resources: {e}")
+
+download_nltk_resources()
 
 class RealTimeLLMService:
     """
@@ -29,39 +38,63 @@ class RealTimeLLMService:
 
     def __init__(self):
         self.logger = logger
+        self.nlp = None
+        self.stop_words = set()
+        
+        # Try to load spaCy model with comprehensive error handling
         try:
-            self.nlp = spacy.load('en_core_web_sm')
-        except OSError:
-            # Fallback if model not found dynamically
-            self.logger.warning("spaCy model 'en_core_web_sm' not found. Make sure it's installed.")
-            self.nlp = None
+            try:
+                self.nlp = spacy.load('en_core_web_sm')
+                logger.info("✅ spaCy model 'en_core_web_sm' loaded successfully")
+            except OSError:
+                logger.warning("⚠️ spaCy model 'en_core_web_sm' not found locally")
+                try:
+                    import subprocess
+                    logger.info("Attempting to download spaCy model...")
+                    result = subprocess.run(
+                        ["python", "-m", "spacy", "download", "en_core_web_sm"], 
+                        capture_output=True, 
+                        timeout=60
+                    )
+                    if result.returncode == 0:
+                        self.nlp = spacy.load('en_core_web_sm')
+                        logger.info("✅ spaCy model downloaded and loaded successfully")
+                    else:
+                        logger.warning(f"⚠️ spaCy download failed: {result.stderr.decode()}")
+                except Exception as download_error:
+                    logger.warning(f"⚠️ Could not download spaCy model: {download_error}")
+        except Exception as e:
+            logger.warning(f"⚠️ spaCy initialization failed: {e}. Using basic NLP fallback.")
 
+        # Try to load NLTK stopwords with error handling
         try:
             self.stop_words = set(stopwords.words('english'))
-        except:
-            self.stop_words = set()
+            logger.info("✅ NLTK stopwords loaded successfully")
+        except Exception as e:
+            logger.warning(f"⚠️ NLTK stopwords not available: {e}. Using empty set.")
+            # Basic fallback stopwords
+            self.stop_words = {'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
+                             'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 
+                             'to', 'was', 'will', 'with'}
 
-        # Enhanced skill synonyms with semantic understanding
+        # Enhanced skill synonyms for intelligent matching
         self.skill_synonyms = {
-            'javascript': ['js', 'node.js', 'nodejs', 'ecmascript', 'es6', 'es2015', 'typescript', 'ts'],
-            'python': ['py', 'python3', 'python2', 'django', 'flask', 'fastapi'],
+            'javascript': ['js', 'node.js', 'nodejs', 'ecmascript', 'es6', 'typescript', 'ts', 'react', 'vue', 'angular'],
+            'python': ['py', 'python3', 'django', 'flask', 'fastapi', 'pandas', 'numpy'],
             'artificial intelligence': ['ai', 'machine learning', 'ml', 'deep learning', 'neural networks', 'nlp'],
-            'react': ['reactjs', 'react.js', 'react native', 'jsx', 'hooks'],
-            'angular': ['angularjs', 'angular.js', 'angular 2+', 'typescript'],
-            'vue': ['vuejs', 'vue.js', 'nuxt', 'vuex'],
-            'database': ['db', 'sql', 'nosql', 'rdbms', 'mysql', 'postgresql', 'mongodb', 'redis'],
-            'cloud': ['aws', 'azure', 'gcp', 'google cloud', 'amazon web services'],
-            'devops': ['ci/cd', 'docker', 'kubernetes', 'jenkins', 'gitlab ci', 'github actions'],
-            'api': ['rest', 'restful', 'graphql', 'microservices', 'web services'],
-            'project management': ['agile', 'scrum', 'kanban', 'jira', 'trello', 'asana']
+            'cloud': ['aws', 'amazon web services', 'azure', 'gcp', 'google cloud', 'cloud computing'],
+            'devops': ['ci/cd', 'docker', 'kubernetes', 'jenkins', 'terraform', 'ansible'],
+            'database': ['sql', 'nosql', 'mysql', 'postgresql', 'mongodb', 'redis', 'db'],
+            'project management': ['agile', 'scrum', 'kanban', 'jira', 'pmp', 'project manager'],
+            'api': ['rest', 'restful', 'graphql', 'microservices', 'web services', 'json']
         }
 
     def _preprocess_text(self, text: str) -> str:
-        """Preprocess text for NLP analysis (lemmatization, tokenization, stopword removal)"""
+        """Preprocess text for NLP analysis"""
         if not text:
             return ""
         
-        # Lowercase and clean
+        # Lowercase and clean non-alphanumeric
         text = text.lower().strip()
         text = re.sub(r'[^\w\s]', ' ', text)
         
@@ -69,6 +102,7 @@ class RealTimeLLMService:
             doc = self.nlp(text)
             tokens = [token.lemma_ for token in doc if not token.is_stop and not token.is_punct and len(token.text) > 2]
         else:
+            # Basic fallback
             tokens = word_tokenize(text)
             tokens = [t for t in tokens if t not in self.stop_words and len(t) > 2]
             
@@ -82,37 +116,49 @@ class RealTimeLLMService:
             if not resume_text or not job_description_text:
                 return {'success': False, 'error': 'Missing resume or job description text'}
 
-            self.logger.info("Starting real-time NLP analysis...")
+            self.logger.info("🚀 Starting Enhanced NLP Real-time Analysis...")
 
             # 1. Text Preprocessing
             clean_resume = self._preprocess_text(resume_text)
             clean_jd = self._preprocess_text(job_description_text)
 
-            # 2. Semantic Analysis using spaCy
+            # Check if we have enough text for TF-IDF
+            if not clean_resume.strip() or not clean_jd.strip():
+                # Fallback to very basic matching if TF-IDF fails
+                return self._basic_fallback_analysis(resume_text, job_description_text)
+
+            # 2. Semantic Analysis
             resume_analysis = self._analyze_text_semantically(resume_text)
             jd_analysis = self._analyze_text_semantically(job_description_text)
 
-            # 3. TF-IDF & Cosine Similarity using scikit-learn
-            tfidf_vectorizer = TfidfVectorizer()
-            tfidf_matrix = tfidf_vectorizer.fit_transform([clean_resume, clean_jd])
-            content_similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
-            similarity_perc = content_similarity * 100
+            # 3. TF-IDF Similarity
+            try:
+                tfidf_vectorizer = TfidfVectorizer()
+                tfidf_matrix = tfidf_vectorizer.fit_transform([clean_resume, clean_jd])
+                content_similarity = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+                similarity_perc = content_similarity * 100
+            except Exception as e:
+                self.logger.warning(f"TF-IDF failed: {e}")
+                similarity_perc = 0
 
-            # 4. Keyword and Category Specific Matching
-            match_results = self._calculate_realtime_match(resume_analysis, jd_analysis)
+            # 4. Structured Matching (Skills, Experience, Education)
+            match_results = self._calculate_match_metrics(resume_analysis, jd_analysis)
             
-            # Combine TF-IDF similarity with keyword-based matching
-            # Weight: 40% TF-IDF, 60% Structured Matching
-            overall_score = (similarity_perc * 0.4) + (match_results['overall_score'] * 0.6)
+            # 5. Combined Scoring
+            # Weights: 30% Global Similarity, 50% Technical, 10% Soft, 10% Exp/Edu
+            overall_score = (similarity_perc * 0.3) + (match_results['technical_score'] * 0.5) + \
+                            (match_results['soft_skills_score'] * 0.1) + \
+                            ((match_results['experience_score'] + match_results['education_score'])/2 * 0.1)
+            
             overall_score = round(min(max(overall_score, 0), 100), 1)
 
-            # 5. Generate Recommendations
+            # 6. ATS Compatibility (0-100)
+            ats_score = self._calculate_ats_compatibility(resume_text, jd_analysis)
+
+            # 7. Recommendations
             recommendations = self._generate_contextual_recommendations(
                 resume_analysis, jd_analysis, match_results
             )
-
-            # 6. ATS Compatibility
-            ats_score = self._calculate_ats_compatibility(resume_text, jd_analysis)
 
             return {
                 'success': True,
@@ -120,988 +166,279 @@ class RealTimeLLMService:
                 'overall_match_score': overall_score,
                 'content_similarity': round(similarity_perc, 1),
                 'category_scores': {
-                    'technical_skills': match_results['technical_score'],
-                    'soft_skills': match_results['soft_skills_score'],
-                    'experience_match': match_results['experience_score'],
-                    'education_match': match_results['education_score'],
-                    'ats_compatibility': ats_score
+                    'technical_skills': round(match_results['technical_score'], 1),
+                    'soft_skills': round(match_results['soft_skills_score'], 1),
+                    'experience_match': round(match_results['experience_score'], 1),
+                    'education_match': round(match_results['education_score'], 1),
+                    'ats_compatibility': round(ats_score, 1)
                 },
                 'detailed_analysis': {
                     'matched_skills': match_results['matched_skills'],
                     'missing_skills': match_results['missing_skills'],
                     'skill_gaps': match_results['skill_gaps'],
-                    'strength_areas': match_results['strength_areas'],
-                    'text_metrics': resume_analysis['text_metrics']
+                    'strength_areas': match_results['strength_areas']
                 },
                 'recommendations': recommendations,
                 'keyword_analysis': {
-                    'resume_keywords': resume_analysis['extracted_keywords'],
-                    'jd_keywords': jd_analysis['extracted_keywords'],
+                    'resume_keywords': resume_analysis['keywords'],
+                    'jd_keywords': jd_analysis['keywords'],
                     'keyword_density': self._calculate_keyword_density(resume_text, jd_analysis)
                 }
             }
 
         except Exception as e:
-            self.logger.error(f"Error in real-time NLP analysis: {e}")
+            self.logger.error(f"❌ Error in real-time NLP analysis: {e}")
             import traceback
-            self.logger.error(traceback.format_exc())
-            return {'success': False, 'error': str(e)}
+            error_trace = traceback.format_exc()
+            self.logger.error(error_trace)
+            
+            # Return a more detailed error response
+            return {
+                'success': False, 
+                'error': f'Analysis failed: {str(e)}',
+                'error_type': type(e).__name__,
+                'fallback_available': True
+            }
 
-    def calculate_enhanced_match_score(self, resume_id: int, job_description_id: int, user_id: int) -> Dict:
-        """
-        Calculate enhanced matching score with improved accuracy for stored documents
-        """
-        try:
-            # Get resume and job description
-            resume = Resume.query.filter_by(id=resume_id, user_id=user_id).first()
-            job_description = JobDescription.query.filter_by(id=job_description_id, user_id=user_id).first()
-
-            if not resume or not job_description:
-                return {'success': False, 'error': 'Resume or job description not found'}
-
-            # Use real-time analysis for stored documents
-            return self.analyze_resume_realtime(resume.extracted_text, job_description.job_text)
-
-        except Exception as e:
-            self.logger.error(f"Error in enhanced match calculation: {e}")
-            return {'success': False, 'error': str(e)}
-    
     def _analyze_text_semantically(self, text: str) -> Dict:
-        """
-        Advanced semantic analysis of text using NLP techniques
-        """
+        """Deep semantic analysis of text"""
         text_lower = text.lower()
-
-        # Extract skills with semantic understanding
-        technical_skills = self._extract_technical_skills_semantic(text_lower)
-        soft_skills = self._extract_soft_skills_semantic(text_lower)
-
-        # Extract experience and education with context
-        experience_analysis = self._analyze_experience_context(text_lower)
-        education_analysis = self._analyze_education_context(text_lower)
-
-        # Extract key phrases and context
-        key_phrases = self._extract_key_phrases(text)
-
+        
+        # Technical skills extraction
+        tech_skills = self._extract_skills(text_lower, 'technical')
+        soft_skills = self._extract_skills(text_lower, 'soft')
+        
+        # Experience extraction
+        exp_data = self._extract_experience(text_lower)
+        
+        # Education extraction
+        edu_data = self._extract_education(text_lower)
+        
         return {
-            'extracted_keywords': {
-                'technical_skills': technical_skills,
-                'soft_skills': soft_skills,
-                'key_phrases': key_phrases
+            'keywords': {
+                'technical': tech_skills,
+                'soft': soft_skills
             },
-            'experience_analysis': experience_analysis,
-            'education_analysis': education_analysis,
+            'experience': exp_data,
+            'education': edu_data,
             'text_metrics': {
                 'length': len(text),
-                'word_count': len(text.split()),
-                'sentence_count': len([s for s in text.split('.') if s.strip()])
+                'words': len(text.split())
             }
         }
 
-    def _analyze_text_with_context(self, text: str) -> Dict:
-        """
-        Legacy method - kept for backward compatibility
-        """
-        return self._analyze_text_semantically(text)
-    
-    def _extract_skills_with_frequency(self, text: str, skill_type: str) -> Dict[str, int]:
-        """
-        Extract skills with their frequency and context importance
-        """
+    def _extract_skills(self, text: str, skill_type: str) -> Dict[str, int]:
+        """Extract skills using regex patterns and frequency"""
         skills_found = {}
         
-        # Define skill lists based on type
-        if skill_type == 'technical':
-            skill_patterns = [
-                r'\b(?:python|java|javascript|react|angular|vue|node\.?js|sql|html|css|php|ruby|go|rust|swift|kotlin|c\+\+|c#|\.net)\b',
-                r'\b(?:aws|azure|gcp|docker|kubernetes|jenkins|git|github|gitlab|jira|confluence)\b',
-                r'\b(?:machine learning|artificial intelligence|data science|big data|analytics|tableau|power bi)\b',
-                r'\b(?:agile|scrum|kanban|devops|ci/cd|microservices|api|rest|graphql)\b'
+        patterns = {
+            'technical': [
+                r'\b(?:python|java|javascript|js|typescript|ts|html|css|react|angular|vue|node\.js|express|django|flask|sql|nosql|mysql|postgresql|mongodb|aws|azure|gcp|docker|kubernetes|git|jenkins|ci/cd|api|rest|graphql)\b',
+                r'\b(?:c\+\+|c#|ruby|php|swift|kotlin|go|rust|scala|hadoop|spark|tensorflow|pytorch|pandas|numpy|sklearn)\b'
+            ],
+            'soft': [
+                r'\b(?:leadership|communication|teamwork|collaboration|problem solving|critical thinking|adaptability|creativity|time management|agile|scrum|mentoring|public speaking)\b'
             ]
-        else:  # soft skills
-            skill_patterns = [
-                r'\b(?:leadership|communication|teamwork|problem solving|analytical|creative|adaptable)\b',
-                r'\b(?:project management|time management|organization|planning|coordination)\b',
-                r'\b(?:customer service|client relations|presentation|negotiation|mentoring)\b'
-            ]
+        }
         
-        for pattern in skill_patterns:
+        for pattern in patterns.get(skill_type, []):
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
-                normalized_skill = self._normalize_skill(match)
-                skills_found[normalized_skill] = skills_found.get(normalized_skill, 0) + 1
-        
+                normalized = self._normalize_skill(match.lower())
+                skills_found[normalized] = skills_found.get(normalized, 0) + 1
+                
         return skills_found
-    
+
     def _normalize_skill(self, skill: str) -> str:
-        """
-        Normalize skill names and handle synonyms
-        """
-        skill_lower = skill.lower().strip()
-        
-        # Check for synonyms
-        for main_skill, synonyms in self.skill_synonyms.items():
-            if skill_lower == main_skill or skill_lower in synonyms:
-                return main_skill
-        
-        return skill_lower
-    
-    def _calculate_detailed_skill_matching(self, resume_analysis: Dict, jd_analysis: Dict) -> Dict:
-        """
-        Calculate detailed skill matching with fuzzy logic
-        """
-        matches = {
-            'technical_exact': [],
-            'technical_partial': [],
-            'technical_missing': [],
-            'soft_exact': [],
-            'soft_partial': [],
-            'soft_missing': []
-        }
-        
-        # Technical skills matching
-        resume_tech = resume_analysis['technical_skills']
-        jd_tech = jd_analysis['technical_skills']
-        
-        for jd_skill, jd_freq in jd_tech.items():
-            if jd_skill in resume_tech:
-                matches['technical_exact'].append({
-                    'skill': jd_skill,
-                    'resume_freq': resume_tech[jd_skill],
-                    'jd_freq': jd_freq,
-                    'importance': self._calculate_skill_importance(jd_skill, jd_freq, jd_analysis)
-                })
-            else:
-                # Check for partial matches
-                partial_match = self._find_partial_match(jd_skill, resume_tech)
-                if partial_match:
-                    matches['technical_partial'].append({
-                        'jd_skill': jd_skill,
-                        'resume_skill': partial_match,
-                        'jd_freq': jd_freq,
-                        'importance': self._calculate_skill_importance(jd_skill, jd_freq, jd_analysis)
-                    })
-                else:
-                    matches['technical_missing'].append({
-                        'skill': jd_skill,
-                        'jd_freq': jd_freq,
-                        'importance': self._calculate_skill_importance(jd_skill, jd_freq, jd_analysis)
-                    })
-        
-        # Soft skills matching (similar logic)
-        resume_soft = resume_analysis['soft_skills']
-        jd_soft = jd_analysis['soft_skills']
-        
-        for jd_skill, jd_freq in jd_soft.items():
-            if jd_skill in resume_soft:
-                matches['soft_exact'].append({
-                    'skill': jd_skill,
-                    'resume_freq': resume_soft[jd_skill],
-                    'jd_freq': jd_freq,
-                    'importance': self._calculate_skill_importance(jd_skill, jd_freq, jd_analysis)
-                })
-            else:
-                partial_match = self._find_partial_match(jd_skill, resume_soft)
-                if partial_match:
-                    matches['soft_partial'].append({
-                        'jd_skill': jd_skill,
-                        'resume_skill': partial_match,
-                        'jd_freq': jd_freq,
-                        'importance': self._calculate_skill_importance(jd_skill, jd_freq, jd_analysis)
-                    })
-                else:
-                    matches['soft_missing'].append({
-                        'skill': jd_skill,
-                        'jd_freq': jd_freq,
-                        'importance': self._calculate_skill_importance(jd_skill, jd_freq, jd_analysis)
-                    })
-        
-        return matches
-    
-    def _find_partial_match(self, target_skill: str, skill_dict: Dict[str, int]) -> str:
-        """
-        Find partial matches using synonym mapping and fuzzy logic
-        """
-        # Check synonyms
-        if target_skill in self.skill_synonyms:
-            for synonym in self.skill_synonyms[target_skill]:
-                if synonym in skill_dict:
-                    return synonym
-        
-        # Check if target skill is a synonym of any resume skill
-        for resume_skill in skill_dict.keys():
-            if resume_skill in self.skill_synonyms:
-                if target_skill in self.skill_synonyms[resume_skill]:
-                    return resume_skill
-        
-        # Check substring matches
-        for resume_skill in skill_dict.keys():
-            if target_skill in resume_skill or resume_skill in target_skill:
-                if len(target_skill) > 3 and len(resume_skill) > 3:  # Avoid short false matches
-                    return resume_skill
-        
-        return None
-    
-    def _calculate_skill_importance(self, skill: str, frequency: int, analysis: Dict) -> float:
-        """
-        Calculate skill importance based on frequency and context
-        """
-        # Base importance from frequency
-        base_importance = min(frequency / 3.0, 1.0)  # Normalize to 0-1
-        
-        # Boost for critical technical skills
-        critical_skills = ['python', 'javascript', 'react', 'sql', 'aws', 'machine learning']
-        if skill in critical_skills:
-            base_importance *= 1.5
-        
-        # Boost for skills mentioned multiple times
-        if frequency > 2:
-            base_importance *= 1.2
-        
-        return min(base_importance, 1.0)
-    
-    def _calculate_weighted_scores(self, skill_matches: Dict, jd_analysis: Dict) -> Dict:
-        """
-        Calculate weighted scores based on skill importance and matches
-        """
-        # Technical skills score
-        tech_total_importance = sum(match['importance'] for match in 
-                                  skill_matches['technical_exact'] + 
-                                  skill_matches['technical_partial'] + 
-                                  skill_matches['technical_missing'])
-        
-        tech_matched_importance = (
-            sum(match['importance'] for match in skill_matches['technical_exact']) +
-            sum(match['importance'] * 0.7 for match in skill_matches['technical_partial'])
-        )
-        
-        technical_score = (tech_matched_importance / tech_total_importance * 100) if tech_total_importance > 0 else 100
-        
-        # Soft skills score (similar calculation)
-        soft_total_importance = sum(match['importance'] for match in 
-                                  skill_matches['soft_exact'] + 
-                                  skill_matches['soft_partial'] + 
-                                  skill_matches['soft_missing'])
-        
-        soft_matched_importance = (
-            sum(match['importance'] for match in skill_matches['soft_exact']) +
-            sum(match['importance'] * 0.7 for match in skill_matches['soft_partial'])
-        )
-        
-        soft_score = (soft_matched_importance / soft_total_importance * 100) if soft_total_importance > 0 else 100
-        
-        # Overall weighted score
-        overall_score = (technical_score * 0.6 + soft_score * 0.4)
-        
-        return {
-            'overall': round(overall_score, 1),
-            'technical': round(technical_score, 1),
-            'soft': round(soft_score, 1),
-            'experience': 85.0,  # Placeholder for experience matching
-            'education': 90.0    # Placeholder for education matching
-        }
-
-    def _extract_technical_skills_semantic(self, text: str) -> Dict[str, int]:
-        """Extract technical skills with semantic understanding, regex, and spaCy NER/Noun chunks"""
-        skills_found = {}
-
-        # 1. Regex-based extraction for known patterns
-        tech_patterns = {
-            'javascript': r'\b(?:javascript|js|node\.?js|typescript|ts|react|angular|vue|next\.js|nuxt|express)\b',
-            'python': r'\b(?:python|py|django|flask|fastapi|pandas|numpy|scipy|sklearn|pytorch|tensorflow)\b',
-            'java': r'\b(?:java|spring|hibernate|maven|gradle|kotlin)\b',
-            'csharp': r'\b(?:c#|csharp|\.net|asp\.net|entity framework|unity|blazor)\b',
-            'database': r'\b(?:sql|mysql|postgresql|mongodb|redis|database|db|oracle|sqlite|cassandra)\b',
-            'cloud': r'\b(?:aws|azure|gcp|google cloud|amazon web services|cloud|lambda|docker|kubernetes)\b',
-            'devops': r'\b(?:docker|kubernetes|jenkins|ci/cd|devops|terraform|ansible|vagrant)\b',
-            'web': r'\b(?:html|css|sass|less|bootstrap|tailwind|responsive|web|ux|ui|figma)\b',
-            'api': r'\b(?:api|rest|restful|graphql|microservices|json|soap)\b',
-            'testing': r'\b(?:testing|unit test|integration test|tdd|bdd|jest|pytest|selenium|cypress)\b'
-        }
-
-        for skill, pattern in tech_patterns.items():
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                skills_found[skill] = len(matches)
-
-        # 2. spaCy-based extraction for emerging skills (Noun chunks / NER)
-        if self.nlp:
-            doc = self.nlp(text)
-            # Focus on capitalized entities or technical-sounding noun phrases
-            for chunk in doc.noun_chunks:
-                chunk_text = chunk.text.lower().strip()
-                # If it's a short, specific-looking term not already found
-                if 2 < len(chunk_text) < 20 and chunk_text not in skills_found:
-                    # Simple heuristic: if it contains a technical keyword or is a single word capitalized in original
-                    if any(token.pos_ in ['PROPN'] for token in chunk if len(token.text) > 2):
-                        # Don't add common English words
-                        if not chunk.root.is_stop:
-                            skills_found[chunk_text] = 1
-
-        return skills_found
-
-    def _extract_soft_skills_semantic(self, text: str) -> Dict[str, int]:
-        """Extract soft skills with semantic understanding"""
-        skills_found = {}
-
-        soft_patterns = {
-            'leadership': r'\b(?:leadership|lead|manage|mentor|coach|supervise)\b',
-            'communication': r'\b(?:communication|present|collaborate|negotiate|articulate)\b',
-            'teamwork': r'\b(?:team|collaborate|cooperation|cross-functional|partnership)\b',
-            'problem_solving': r'\b(?:problem.solving|troubleshoot|analyze|debug|resolve)\b',
-            'project_management': r'\b(?:project.management|agile|scrum|kanban|planning)\b',
-            'adaptability': r'\b(?:adapt|flexible|versatile|learn|growth)\b',
-            'creativity': r'\b(?:creative|innovative|design|brainstorm|ideate)\b',
-            'time_management': r'\b(?:time.management|prioritize|deadline|efficient|organize)\b'
-        }
-
-        for skill, pattern in soft_patterns.items():
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                skills_found[skill] = len(matches)
-
-        return skills_found
-
-    def _analyze_experience_context(self, text: str) -> Dict:
-        """Analyze experience context from text"""
-        experience_patterns = [
-            r'(\d+)\+?\s*years?\s*(?:of\s*)?experience',
-            r'(\d+)\+?\s*years?\s*in',
-            r'experience\s*(?:of\s*)?(\d+)\+?\s*years?'
-        ]
-
-        years_found = []
-        for pattern in experience_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            years_found.extend([int(match) for match in matches if match.isdigit()])
-
-        return {
-            'years_mentioned': years_found,
-            'max_years': max(years_found) if years_found else 0,
-            'experience_level': self._classify_experience_level(max(years_found) if years_found else 0)
-        }
-
-    def _analyze_education_context(self, text: str) -> Dict:
-        """Analyze education context from text"""
-        education_patterns = {
-            'bachelor': r'\b(?:bachelor|b\.?s\.?|b\.?a\.?|undergraduate)\b',
-            'master': r'\b(?:master|m\.?s\.?|m\.?a\.?|mba|graduate)\b',
-            'phd': r'\b(?:phd|ph\.?d\.?|doctorate|doctoral)\b',
-            'certification': r'\b(?:certified|certification|certificate)\b'
-        }
-
-        education_found = {}
-        for level, pattern in education_patterns.items():
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                education_found[level] = len(matches)
-
-        return education_found
-
-    def _extract_key_phrases(self, text: str) -> List[str]:
-        """Extract key phrases using simple NLP techniques"""
-        # Split into sentences and extract meaningful phrases
-        sentences = [s.strip() for s in text.split('.') if len(s.strip()) > 10]
-        key_phrases = []
-
-        for sentence in sentences[:10]:  # Limit to first 10 sentences
-            # Extract phrases with action verbs
-            action_patterns = [
-                r'(?:developed|created|implemented|designed|built|managed|led|improved)\s+[^.]{10,50}',
-                r'(?:responsible for|experience in|skilled in|proficient in)\s+[^.]{10,50}'
-            ]
-
-            for pattern in action_patterns:
-                matches = re.findall(pattern, sentence, re.IGNORECASE)
-                key_phrases.extend(matches[:3])  # Limit matches per sentence
-
-        return key_phrases[:15]  # Return top 15 key phrases
-
-    def _calculate_realtime_match(self, resume_analysis: Dict, jd_analysis: Dict) -> Dict:
-        """Calculate real-time matching scores with advanced algorithms"""
-
-        # Extract skill sets
-        resume_tech = resume_analysis['extracted_keywords']['technical_skills']
-        resume_soft = resume_analysis['extracted_keywords']['soft_skills']
-        jd_tech = jd_analysis['extracted_keywords']['technical_skills']
-        jd_soft = jd_analysis['extracted_keywords']['soft_skills']
-
-        # Calculate technical skills match
-        tech_matches = self._calculate_skill_matches(resume_tech, jd_tech, 'technical')
-        soft_matches = self._calculate_skill_matches(resume_soft, jd_soft, 'soft')
-
-        # Calculate experience match
-        exp_score = self._calculate_experience_match(
-            resume_analysis['experience_analysis'],
-            jd_analysis['experience_analysis']
-        )
-
-        # Calculate education match
-        edu_score = self._calculate_education_match(
-            resume_analysis['education_analysis'],
-            jd_analysis['education_analysis']
-        )
-
-        # Calculate weighted overall score
-        # 30% TF-IDF (Global Content Similarity)
-        # 40% Technical Skills
-        # 15% Soft Skills
-        # 10% Experience
-        # 5% Education
-        
-        # Note: self.similarity_perc or similar can be used if we store it
-        # Since this method is called within analyze_resume_realtime, we calculate combined score there.
-        # This method provides the structured weights.
-        
-        overall_score = (
-            tech_matches['score'] * 0.5 +
-            soft_matches['score'] * 0.2 +
-            exp_score * 0.2 +
-            edu_score * 0.1
-        )
-
-        return {
-            'overall_score': round(overall_score, 1),
-            'technical_score': round(tech_matches['score'], 1),
-            'soft_skills_score': round(soft_matches['score'], 1),
-            'experience_score': round(exp_score, 1),
-            'education_score': round(edu_score, 1),
-            'matched_skills': tech_matches['matched'] + soft_matches['matched'],
-            'missing_skills': tech_matches['missing'] + soft_matches['missing'],
-            'skill_gaps': self._identify_critical_gaps(tech_matches['missing'], jd_tech),
-            'strength_areas': self._identify_strengths(tech_matches['matched'], resume_tech)
-        }
-
-    def _calculate_skill_matches(self, resume_skills: Dict, jd_skills: Dict, skill_type: str = 'technical') -> Dict:
-        """Calculate skill matching with synonym recognition and fuzzy matching"""
-        from fuzzywuzzy import fuzz
-        
-        matched = []
-        missing = []
-
-        for jd_skill, jd_freq in jd_skills.items():
-            found_match = False
-
-            # Direct/Exact match
-            if jd_skill in resume_skills:
-                matched.append({
-                    'skill': jd_skill,
-                    'resume_freq': resume_skills[jd_skill],
-                    'jd_freq': jd_freq,
-                    'match_type': 'exact',
-                    'category': 'soft_skills' if skill_type == 'soft' else 'technical_skills'
-                })
-                found_match = True
-            else:
-                # Check synonyms
-                for skill, synonyms in self.skill_synonyms.items():
-                    if jd_skill in synonyms or skill == jd_skill:
-                        for synonym in synonyms + [skill]:
-                            if synonym in resume_skills:
-                                matched.append({
-                                    'skill': jd_skill,
-                                    'resume_skill': synonym,
-                                    'resume_freq': resume_skills[synonym],
-                                    'jd_freq': jd_freq,
-                                    'match_type': 'synonym',
-                                    'category': 'soft_skills' if skill_type == 'soft' else 'technical_skills'
-                                })
-                                found_match = True
-                                break
-                        if found_match:
-                            break
-
-                # If still no match, check for fuzzy matching using fuzzywuzzy
-                if not found_match:
-                    best_match = None
-                    highest_score = 0
-                    
-                    for resume_skill in resume_skills.keys():
-                        # Calculate fuzzy similarity score
-                        score = fuzz.ratio(jd_skill.lower(), resume_skill.lower())
-                        if score > 85: # High threshold for accuracy
-                            if score > highest_score:
-                                highest_score = score
-                                best_match = resume_skill
-                    
-                    if best_match:
-                        matched.append({
-                            'skill': jd_skill,
-                            'resume_skill': best_match,
-                            'resume_freq': resume_skills[best_match],
-                            'jd_freq': jd_freq,
-                            'match_type': 'fuzzy',
-                            'score': highest_score,
-                            'category': 'soft_skills' if skill_type == 'soft' else 'technical_skills'
-                        })
-                        found_match = True
-
-        # Calculate missing skills
-        for jd_skill, jd_freq in jd_skills.items():
-            is_matched = any(m['skill'] == jd_skill for m in matched)
-            if not is_matched:
-                missing.append({
-                    'skill': jd_skill,
-                    'jd_freq': jd_freq,
-                    'importance': self._calculate_skill_importance(jd_skill, jd_freq),
-                    'category': 'soft_skills' if skill_type == 'soft' else 'technical_skills'
-                })
-
-        # Calculate match score
-        total_jd_skills = len(jd_skills)
-        matched_count = len(matched)
-        score = (matched_count / max(total_jd_skills, 1)) * 100
-
-        return {
-            'score': score,
-            'matched': matched,
-            'missing': missing,
-            'match_ratio': f"{matched_count}/{total_jd_skills}"
-        }
-
-    def _calculate_experience_match(self, resume_exp: Dict, jd_exp: Dict) -> float:
-        """Calculate experience level matching"""
-        resume_years = resume_exp.get('max_years', 0)
-        jd_years = jd_exp.get('max_years', 0)
-
-        if jd_years == 0:
-            return 100.0  # No specific requirement
-
-        if resume_years >= jd_years:
-            return 100.0  # Meets or exceeds requirement
-        elif resume_years >= jd_years * 0.8:
-            return 85.0   # Close to requirement
-        elif resume_years >= jd_years * 0.6:
-            return 70.0   # Somewhat below requirement
-        else:
-            return 50.0   # Significantly below requirement
-
-    def _calculate_education_match(self, resume_edu: Dict, jd_edu: Dict) -> float:
-        """Calculate education level matching"""
-        education_hierarchy = {'phd': 4, 'master': 3, 'bachelor': 2, 'certification': 1}
-
-        resume_level = 0
-        jd_level = 0
-
-        for edu_type, level in education_hierarchy.items():
-            if edu_type in resume_edu:
-                resume_level = max(resume_level, level)
-            if edu_type in jd_edu:
-                jd_level = max(jd_level, level)
-
-        if jd_level == 0:
-            return 100.0  # No specific requirement
-
-        if resume_level >= jd_level:
-            return 100.0
-        elif resume_level == jd_level - 1:
-            return 80.0
-        else:
-            return 60.0
-
-    def _classify_experience_level(self, years: int) -> str:
-        """Classify experience level based on years"""
-        if years >= 10:
-            return 'senior'
-        elif years >= 5:
-            return 'mid-level'
-        elif years >= 2:
-            return 'junior'
-        else:
-            return 'entry-level'
-
-    def _calculate_skill_importance(self, skill: str, frequency: int) -> float:
-        """Calculate skill importance based on frequency and context"""
-        base_importance = min(frequency * 10, 100)  # Cap at 100
-
-        # Boost importance for critical skills
-        critical_skills = ['python', 'javascript', 'java', 'react', 'sql', 'aws']
-        if skill.lower() in critical_skills:
-            base_importance *= 1.2
-
-        return min(base_importance, 100)
-
-    def _identify_critical_gaps(self, missing_skills: List[Dict], jd_skills: Dict) -> List[Dict]:
-        """Identify critical skill gaps that need immediate attention"""
-        critical_gaps = []
-
-        for missing in missing_skills:
-            if missing['importance'] > 70:  # High importance threshold
-                critical_gaps.append({
-                    'skill': missing['skill'],
-                    'importance': missing['importance'],
-                    'priority': 'high',
-                    'suggestion': f"Consider adding {missing['skill']} to your resume"
-                })
-
-        return critical_gaps[:5]  # Return top 5 critical gaps
-
-    def _identify_strengths(self, matched_skills: List[Dict], resume_skills: Dict) -> List[Dict]:
-        """Identify strength areas to highlight"""
-        strengths = []
-
-        for match in matched_skills:
-            if match.get('resume_freq', 0) > 2:  # Mentioned multiple times
-                strengths.append({
-                    'skill': match['skill'],
-                    'frequency': match.get('resume_freq', 0),
-                    'strength_level': 'high' if match.get('resume_freq', 0) > 4 else 'medium'
-                })
-
-        return sorted(strengths, key=lambda x: x['frequency'], reverse=True)[:5]
-
-    def _calculate_ats_compatibility(self, resume_text: str, jd_analysis: Dict) -> float:
-        """Calculate ATS (Applicant Tracking System) compatibility score"""
-        score = 100.0
-
-        # Check for common ATS issues
-        if len(resume_text.split()) < 200:
-            score -= 10  # Too short
-        elif len(resume_text.split()) > 1000:
-            score -= 5   # Might be too long
-
-        # Check for keyword density
-        jd_keywords = jd_analysis['extracted_keywords']
-        total_jd_keywords = sum(len(skills) for skills in jd_keywords.values())
-
-        if total_jd_keywords > 0:
-            keyword_coverage = self._calculate_keyword_coverage(resume_text, jd_keywords)
-            if keyword_coverage < 30:
-                score -= 20  # Low keyword coverage
-            elif keyword_coverage < 50:
-                score -= 10
-
-        return max(score, 0)
-
-    def _calculate_keyword_coverage(self, text: str, jd_keywords: Dict) -> float:
-        """Calculate what percentage of JD keywords appear in resume"""
-        text_lower = text.lower()
-        total_keywords = 0
-        found_keywords = 0
-
-        for category, skills in jd_keywords.items():
-            if isinstance(skills, dict):
-                for skill, freq in skills.items():
-                    total_keywords += 1
-                    if skill in text_lower:
-                        found_keywords += 1
-            elif isinstance(skills, list):
-                for skill in skills:
-                    total_keywords += 1
-                    if skill in text_lower:
-                        found_keywords += 1
-
-        return (found_keywords / max(total_keywords, 1)) * 100
-
-    def _calculate_keyword_density(self, text: str, jd_analysis: Dict) -> Dict:
-        """Calculate keyword density metrics"""
-        words = text.lower().split()
-        total_words = len(words)
-
-        if total_words == 0:
-            return {'density': 0, 'keyword_count': 0, 'total_words': 0}
-
-        keyword_count = 0
-        jd_keywords = jd_analysis.get('extracted_keywords', {})
-
-        for category, skills in jd_keywords.items():
-            if isinstance(skills, dict):
-                for skill in skills.keys():
-                    keyword_count += text.lower().count(skill)
-            elif isinstance(skills, list):
-                for skill in skills:
-                    keyword_count += text.lower().count(skill)
-
-        density = (keyword_count / total_words) * 100
-
-        return {
-            'density': round(density, 2),
-            'keyword_count': keyword_count,
-            'total_words': total_words
-        }
-
-    def _generate_contextual_recommendations(self, resume_analysis: Dict, jd_analysis: Dict, match_results: Dict) -> List[Dict]:
-        """Generate comprehensive contextual recommendations based on detailed analysis"""
-        recommendations = []
-
-        # Detailed recommendations for missing critical skills
-        for gap in match_results['skill_gaps'][:5]:  # Top 5 critical gaps
-            skill_name = gap['skill']
-            frequency = gap.get('jd_freq', 1)
-            importance = gap.get('importance', 0.5)
-
-            # Generate specific, actionable recommendations
-            if importance > 0.8:
-                priority = 'critical'
-                action_detail = f"This is a core requirement mentioned {frequency} times. Add a dedicated section showcasing {skill_name} projects, certifications, or experience. Include specific metrics and outcomes."
-            elif importance > 0.6:
-                priority = 'high'
-                action_detail = f"Important skill mentioned {frequency} times. Include {skill_name} in your skills section and mention it in relevant work experience with concrete examples."
-            else:
-                priority = 'medium'
-                action_detail = f"Consider adding {skill_name} to strengthen your profile. Mention any related experience or training you have."
-
-            recommendations.append({
-                'type': 'skill_gap',
-                'priority': priority,
-                'title': f"Add {skill_name} expertise to your resume",
-                'description': f"Critical skill gap - {skill_name} appears {frequency} times in job requirements",
-                'action': action_detail,
-                'category': 'technical_skills',
-                'impact': 'high'
-            })
-
-        # Enhanced recommendations for strengthening existing skills
-        for strength in match_results['strength_areas'][:4]:
-            skill_name = strength['skill']
-            frequency = strength.get('frequency', 1)
-
-            recommendations.append({
-                'type': 'skill_enhancement',
-                'priority': 'medium',
-                'title': f"Amplify your {skill_name} expertise",
-                'description': f"You have {skill_name} experience ({frequency} mentions) - make it more prominent",
-                'action': f"Move {skill_name} to the top of your skills section. Add quantifiable achievements: 'Led {skill_name} project resulting in X% improvement' or 'Implemented {skill_name} solution saving $X annually'",
-                'category': 'skill_enhancement',
-                'impact': 'medium'
-            })
-
-        # Comprehensive formatting and ATS recommendations
-        recommendations.extend([
-            {
-                'type': 'formatting',
-                'priority': 'high',
-                'title': 'Optimize resume structure for ATS scanning',
-                'description': 'Improve your resume\'s compatibility with Applicant Tracking Systems',
-                'action': 'Use standard section headers (Experience, Education, Skills). Avoid tables, graphics, and complex formatting. Use bullet points and consistent formatting throughout.',
-                'category': 'formatting',
-                'impact': 'high'
-            },
-            {
-                'type': 'keyword_optimization',
-                'priority': 'high',
-                'title': 'Increase keyword density and relevance',
-                'description': 'Enhance keyword matching with job description',
-                'action': 'Incorporate more job-specific keywords naturally throughout your resume. Use exact phrases from the job posting when describing your experience.',
-                'category': 'content',
-                'impact': 'high'
-            },
-            {
-                'type': 'content_enhancement',
-                'priority': 'medium',
-                'title': 'Add quantifiable achievements and metrics',
-                'description': 'Strengthen your resume with measurable results',
-                'action': 'Replace generic descriptions with specific metrics: "Increased sales by 25%", "Managed team of 8 developers", "Reduced processing time by 40%"',
-                'category': 'content',
-                'impact': 'medium'
-            },
-            {
-                'type': 'industry_alignment',
-                'priority': 'medium',
-                'title': 'Align experience with industry requirements',
-                'description': 'Better match your background to the target role',
-                'action': 'Emphasize relevant experience and use industry-specific terminology. Highlight transferable skills and relevant projects.',
-                'category': 'content',
-                'impact': 'medium'
-            }
-        ])
-
-        return recommendations[:12]  # Return top 12 comprehensive recommendations
-
-
-
-    # Legacy compatibility methods (kept for backward compatibility)
-    def calculate_enhanced_match(self, user_id: int, resume_id: int, job_description_id: int) -> Dict:
-        """Legacy method - redirects to new implementation"""
-        return self.calculate_enhanced_match_score(resume_id, job_description_id, user_id)
-
-    def _extract_skills_with_frequency(self, text: str, skill_type: str) -> Dict[str, int]:
-        """Legacy method - redirects to semantic extraction"""
-        if skill_type == 'technical':
-            return self._extract_technical_skills_semantic(text)
-        elif skill_type == 'soft':
-            return self._extract_soft_skills_semantic(text)
-        else:
-            return {}
-
-    def _extract_experience_years(self, text: str) -> int:
-        """Legacy method - extract experience years"""
-        experience_analysis = self._analyze_experience_context(text)
-        return experience_analysis.get('max_years', 0)
-
-    def _extract_education_level(self, text: str) -> str:
-        """Legacy method - extract education level"""
-        education_analysis = self._analyze_education_context(text)
-
-        if 'phd' in education_analysis:
-            return 'doctorate'
-        elif 'master' in education_analysis:
-            return 'masters'
-        elif 'bachelor' in education_analysis:
-            return 'bachelors'
-        elif 'certification' in education_analysis:
-            return 'certification'
-        else:
-            return 'unknown'
-
-
-
-    # Additional helper methods for complete implementation
-    def _calculate_detailed_skill_matching(self, resume_analysis: Dict, jd_analysis: Dict) -> Dict:
-        """Calculate detailed skill matching between resume and job description"""
-        resume_tech = resume_analysis.get('technical_skills', {})
-        resume_soft = resume_analysis.get('soft_skills', {})
-        jd_tech = jd_analysis.get('technical_skills', {})
-        jd_soft = jd_analysis.get('soft_skills', {})
-
-        return {
-            'technical_matches': self._calculate_skill_matches(resume_tech, jd_tech),
-            'soft_skill_matches': self._calculate_skill_matches(resume_soft, jd_soft)
-        }
-
-    def _calculate_weighted_scores(self, skill_matches: Dict, jd_analysis: Dict) -> Dict:
-        """Calculate weighted scores based on skill importance"""
-        tech_score = skill_matches['technical_matches']['score']
-        soft_score = skill_matches['soft_skill_matches']['score']
-
-        # Weight technical skills more heavily
-        overall_score = (tech_score * 0.7) + (soft_score * 0.3)
-
-        return {
-            'overall': round(overall_score, 1),
-            'technical': round(tech_score, 1),
-            'soft': round(soft_score, 1),
-            'experience': 85.0,  # Placeholder
-            'education': 90.0    # Placeholder
-        }
-
-    def _generate_detailed_analysis(self, skill_matches: Dict, resume_analysis: Dict, jd_analysis: Dict) -> Dict:
-        """Generate detailed analysis for frontend display"""
-        return {
-            'matched_skills': skill_matches['technical_matches']['matched'] + skill_matches['soft_skill_matches']['matched'],
-            'missing_skills': skill_matches['technical_matches']['missing'] + skill_matches['soft_skill_matches']['missing'],
-            'skill_gaps': self._identify_critical_gaps(skill_matches['technical_matches']['missing'], jd_analysis.get('technical_skills', {})),
-            'strength_areas': self._identify_strengths(skill_matches['technical_matches']['matched'], resume_analysis.get('technical_skills', {}))
-        }
-
-    def _generate_recommendations(self, skill_matches: Dict, jd_analysis: Dict) -> List[Dict]:
-        """Generate recommendations based on skill analysis"""
-        recommendations = []
-
-        # Add recommendations for missing skills
-        missing_skills = skill_matches['technical_matches']['missing'] + skill_matches['soft_skill_matches']['missing']
-
-        for missing in missing_skills[:5]:  # Top 5 missing skills
-            recommendations.append({
-                'type': 'skill_gap',
-                'priority': 'high' if missing.get('importance', 0) > 70 else 'medium',
-                'title': f"Add {missing['skill']} to your resume",
-                'description': f"This skill is mentioned {missing.get('jd_freq', 1)} times in the job description",
-                'action': f"Include specific examples of {missing['skill']} experience",
-                'category': 'technical_skills'
-            })
-
-        return recommendations
-    
-    def _generate_detailed_analysis(self, skill_matches: Dict, resume_analysis: Dict, jd_analysis: Dict) -> Dict:
-        """
-        Generate detailed analysis for frontend display
-        """
-        return {
-            'skills_comparison': {
-                'technical_skills': [
-                    {
-                        'skill': match['skill'],
-                        'resume_count': match['resume_freq'],
-                        'jd_count': match['jd_freq'],
-                        'match_type': 'exact'
-                    } for match in skill_matches['technical_exact']
-                ] + [
-                    {
-                        'skill': match['jd_skill'],
-                        'resume_count': 'X',
-                        'jd_count': match['jd_freq'],
-                        'match_type': 'missing'
-                    } for match in skill_matches['technical_missing']
-                ],
-                'soft_skills': [
-                    {
-                        'skill': match['skill'],
-                        'resume_count': match['resume_freq'],
-                        'jd_count': match['jd_freq'],
-                        'match_type': 'exact'
-                    } for match in skill_matches['soft_exact']
-                ] + [
-                    {
-                        'skill': match['jd_skill'],
-                        'resume_count': 'X',
-                        'jd_count': match['jd_freq'],
-                        'match_type': 'missing'
-                    } for match in skill_matches['soft_missing']
-                ]
-            },
-            'summary': {
-                'total_technical_skills': len(jd_analysis['technical_skills']),
-                'matched_technical_skills': len(skill_matches['technical_exact']) + len(skill_matches['technical_partial']),
-                'total_soft_skills': len(jd_analysis['soft_skills']),
-                'matched_soft_skills': len(skill_matches['soft_exact']) + len(skill_matches['soft_partial'])
-            }
-        }
-    
-    def _generate_recommendations(self, skill_matches: Dict, jd_analysis: Dict) -> List[Dict]:
-        """
-        Generate actionable recommendations based on analysis
-        """
-        recommendations = []
-        
-        # Missing critical technical skills
-        for missing in skill_matches['technical_missing']:
-            if missing['importance'] > 0.7:
-                recommendations.append({
-                    'type': 'critical',
-                    'category': 'technical',
-                    'title': f"Add {missing['skill']} experience",
-                    'description': f"This skill appears {missing['jd_freq']} times in the job description and is highly important.",
-                    'action': f"Include projects or experience with {missing['skill']} in your resume."
-                })
-        
-        # Missing soft skills
-        for missing in skill_matches['soft_missing']:
-            if missing['importance'] > 0.6:
-                recommendations.append({
-                    'type': 'important',
-                    'category': 'soft',
-                    'title': f"Highlight {missing['skill']} abilities",
-                    'description': f"This soft skill is mentioned {missing['jd_freq']} times in the job description.",
-                    'action': f"Add examples demonstrating your {missing['skill']} in your work experience."
-                })
-        
-        return recommendations
-    
-    def _extract_experience_years(self, text: str) -> int:
-        """Extract years of experience from text"""
+        """Map synonyms to common canonical forms"""
+        for main, synonyms in self.skill_synonyms.items():
+            if skill == main or skill in synonyms:
+                return main
+        return skill
+
+    def _extract_experience(self, text: str) -> Dict:
+        """Extract years of experience"""
         patterns = [
             r'(\d+)\+?\s*years?\s*(?:of\s*)?experience',
             r'(\d+)\+?\s*years?\s*in',
-            r'experience.*?(\d+)\+?\s*years?'
+            r'exp[.:]\s*(\d+)\+?\s*years?'
         ]
         
-        for pattern in patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            if matches:
-                return max(int(match) for match in matches)
-        
-        return 0
-    
-    def _extract_education_level(self, text: str) -> str:
-        """Extract education level from text"""
-        if re.search(r'\b(?:phd|doctorate|doctoral)\b', text, re.IGNORECASE):
-            return 'PhD'
-        elif re.search(r'\b(?:master|mba|ms|ma)\b', text, re.IGNORECASE):
-            return 'Masters'
-        elif re.search(r'\b(?:bachelor|bs|ba|degree)\b', text, re.IGNORECASE):
-            return 'Bachelors'
-        else:
-            return 'Other'
-    
+        years = []
+        for p in patterns:
+            matches = re.findall(p, text)
+            years.extend([int(m) for m in matches if m.isdigit()])
+            
+        max_years = max(years) if years else 0
+        return {
+            'years': max_years,
+            'level': 'senior' if max_years >= 8 else 'mid' if max_years >= 3 else 'junior' if max_years >= 1 else 'entry'
+        }
 
+    def _extract_education(self, text: str) -> Dict:
+        """Extract education level"""
+        edu_map = {'phd': 4, 'master': 3, 'bachelor': 2, 'degree': 1}
+        levels_found = []
+        
+        if re.search(r'\b(?:phd|doctorate)\b', text): levels_found.append('phd')
+        if re.search(r'\b(?:master|ms|ma|mba)\b', text): levels_found.append('master')
+        if re.search(r'\b(?:bachelor|bs|ba)\b', text): levels_found.append('bachelor')
+        if re.search(r'\b(?:degree|college|university)\b', text): levels_found.append('degree')
+        
+        max_level = 'unknown'
+        max_val = 0
+        for l in levels_found:
+            if edu_map.get(l, 0) > max_val:
+                max_val = edu_map[l]
+                max_level = l
+                
+        return {'level': max_level, 'value': max_val}
+
+    def _calculate_match_metrics(self, res: Dict, jd: Dict) -> Dict:
+        """Calculate detailed matching metrics between resume and JD"""
+        from fuzzywuzzy import fuzz
+        
+        # Technical Match
+        matched_tech = []
+        missing_tech = []
+        
+        jd_tech = jd['keywords']['technical']
+        res_tech = res['keywords']['technical']
+        
+        for skill, freq in jd_tech.items():
+            if skill in res_tech:
+                matched_tech.append({'skill': skill, 'jd_freq': freq, 'resume_freq': res_tech[skill], 'category': 'technical'})
+            else:
+                # Fuzzy match check
+                found_fuzzy = False
+                for r_skill in res_tech:
+                    if fuzz.ratio(skill, r_skill) > 85:
+                        matched_tech.append({'skill': skill, 'matched_as': r_skill, 'jd_freq': freq, 'resume_freq': res_tech[r_skill], 'category': 'technical'})
+                        found_fuzzy = True
+                        break
+                if not found_fuzzy:
+                    missing_tech.append({'skill': skill, 'jd_freq': freq, 'importance': min(freq * 20, 100), 'category': 'technical'})
+                    
+        tech_score = (len(matched_tech) / max(len(jd_tech), 1)) * 100
+        
+        # Soft Match
+        matched_soft = []
+        missing_soft = []
+        jd_soft = jd['keywords']['soft']
+        res_soft = res['keywords']['soft']
+        
+        for skill, freq in jd_soft.items():
+            if skill in res_soft:
+                matched_soft.append({'skill': skill, 'jd_freq': freq, 'resume_freq': res_soft[skill], 'category': 'soft_skills'})
+            else:
+                missing_soft.append({'skill': skill, 'jd_freq': freq, 'importance': 50, 'category': 'soft_skills'})
+                
+        soft_score = (len(matched_soft) / max(len(jd_soft), 1)) * 100
+        
+        # Experience Match
+        exp_score = 100 if res['experience']['years'] >= jd['experience']['years'] else (res['experience']['years'] / max(jd['experience']['years'], 1)) * 100
+        
+        # Education Match
+        edu_score = 100 if res['education']['value'] >= jd['education']['value'] else 50
+        
+        return {
+            'technical_score': tech_score,
+            'soft_skills_score': soft_score,
+            'experience_score': exp_score,
+            'education_score': edu_score,
+            'matched_skills': matched_tech + matched_soft,
+            'missing_skills': missing_tech + missing_soft,
+            'skill_gaps': sorted(missing_tech, key=lambda x: x['importance'], reverse=True)[:5],
+            'strength_areas': sorted(matched_tech, key=lambda x: x['resume_freq'], reverse=True)[:5]
+        }
+
+    def _calculate_ats_compatibility(self, text: str, jd_analysis: Dict) -> float:
+        """Calculate ATS score based on keyword density and formatting basics"""
+        score = 80 # Base high score
+        
+        # Keyword coverage
+        jd_all_keywords = set(jd_analysis['keywords']['technical'].keys()).union(set(jd_analysis['keywords']['soft'].keys()))
+        found = 0
+        text_lower = text.lower()
+        for kw in jd_all_keywords:
+            if kw in text_lower:
+                found += 1
+                
+        coverage = (found / max(len(jd_all_keywords), 1)) * 100
+        if coverage < 40: score -= 20
+        elif coverage < 60: score -= 10
+        
+        # Length check
+        words = len(text.split())
+        if words < 200: score -= 15 # Too short
+        if words > 1500: score -= 5 # A bit too long
+        
+        return max(min(score, 100), 0)
+
+    def _calculate_keyword_density(self, text: str, jd_analysis: Dict) -> Dict:
+        words = text.lower().split()
+        total = len(words)
+        if total == 0: return {'density': 0, 'count': 0}
+        
+        kw_count = 0
+        for kw in set(jd_analysis['keywords']['technical'].keys()):
+            kw_count += text.lower().count(kw)
+            
+        return {'density': round((kw_count / total) * 100, 2), 'count': kw_count}
+
+    def _generate_contextual_recommendations(self, res: Dict, jd: Dict, match: Dict) -> List[Dict]:
+        recs = []
+        
+        # 1. Skill Gaps
+        for gap in match['skill_gaps']:
+            recs.append({
+                'title': f"Add '{gap['skill']}' to your resume",
+                'description': f"This is a core requirement mentioned {gap['jd_freq']} times in the job description.",
+                'action': f"Describe a project or role where you used {gap['skill']} to demonstrate proficiency.",
+                'priority': 'critical' if gap['importance'] > 70 else 'high',
+                'type': 'skill_gap',
+                'category': 'technical_skills'
+            })
+            
+        # 2. Formatting / ATS
+        if len(res['text_metrics']['words']) < 300:
+            recs.append({
+                'title': "Expand your resume content",
+                'description': "Your resume is shorter than recommended (under 300 words).",
+                'action': "Add more details about your achievements and responsibilities in previous roles.",
+                'priority': 'medium',
+                'type': 'formatting',
+                'category': 'formatting'
+            })
+            
+        # 3. Experience level
+        if res['experience']['years'] < jd['experience']['years']:
+            recs.append({
+                'title': "Highlight transferable skills",
+                'description': f"The role prefers {jd['experience']['years']} years of experience, you have {res['experience']['years']}.",
+                'action': "Emphasize high-impact projects and rapid learning ability to offset the year gap.",
+                'priority': 'high',
+                'type': 'experience',
+                'category': 'content'
+            })
+            
+        return recs[:10]
+
+    def _basic_fallback_analysis(self, res_text: str, jd_text: str) -> Dict:
+        """Minimal fallback if NLP processing fails heavily"""
+        return {
+            'success': True,
+            'overall_match_score': 50.0,
+            'category_scores': {'technical_skills': 50, 'soft_skills': 50, 'ats_compatibility': 50},
+            'detailed_analysis': {'matched_skills': [], 'missing_skills': []},
+            'recommendations': [],
+            'keyword_analysis': {}
+        }
+
+    # Legacy method names for backward compatibility
+    def calculate_enhanced_match_score(self, resume_id: int, job_description_id: int, user_id: int) -> Dict:
+        from backend.models import Resume, JobDescription
+        resume = Resume.query.filter_by(id=resume_id, user_id=user_id).first()
+        jd = JobDescription.query.filter_by(id=job_description_id, user_id=user_id).first()
+        if not resume or not jd: return {'success': False, 'error': 'Not found'}
+        return self.analyze_resume_realtime(resume.extracted_text, jd.job_text)

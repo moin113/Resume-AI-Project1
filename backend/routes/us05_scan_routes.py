@@ -226,22 +226,32 @@ def perform_scan():
             
             current_app.logger.error(f"❌ Matching error: {matching_error}")
             import traceback
-            traceback.print_exc()
+            error_trace = traceback.format_exc()
+            current_app.logger.error(error_trace)
+            
+            # Provide detailed error information
+            error_details = {
+                'error_type': type(matching_error).__name__,
+                'error_message': str(matching_error),
+                'resume_text_length': len(resume.extracted_text) if resume.extracted_text else 0,
+                'jd_text_length': len(job_description.job_text) if job_description.job_text else 0
+            }
             
             return jsonify({
                 'success': False,
-                'message': 'Failed to perform scan analysis',
-                'error': str(matching_error)
+                'message': 'Failed to perform scan analysis. Please try again or contact support if the issue persists.',
+                'error': str(matching_error),
+                'error_details': error_details,
+                'trace': error_trace if current_app.config.get('DEBUG') else None
             }), 500
         
     except Exception as e:
-        current_app.logger.error(f"❌ Scan error: {str(e)}")
         import traceback
         traceback.print_exc()
-        
+        current_app.logger.error(f"SCAN FAILED: {str(e)}")
         return jsonify({
             'success': False,
-            'message': 'Error performing scan',
+            'message': f'Error performing scan: {str(e)}',
             'error': str(e)
         }), 500
 

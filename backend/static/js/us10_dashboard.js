@@ -526,13 +526,29 @@ function performActualScan(resumeText, jobDescription, token) {
                     window.location.href = `/results?scan_id=${data.scan_id}`;
                 }, 1000);
             } else if (data) {
-                showNotification(data.message || 'Scan failed', 'error');
+                // Enhanced error display
+                console.error('❌ Scan failed:', data);
+
+                let errorMessage = data.message || 'Scan failed';
+
+                // If there are error details, log them
+                if (data.error_details) {
+                    console.error('Error details:', data.error_details);
+                    errorMessage += ` (${data.error_details.error_type || 'Unknown error'})`;
+                }
+
+                // If there's a specific error message, include it
+                if (data.error && data.error !== data.message) {
+                    console.error('Error:', data.error);
+                }
+
+                showNotification(errorMessage, 'error');
             }
         })
         .catch(error => {
             console.error('❌ Scan error:', error);
             if (error.message !== 'Limit reached') {
-                showNotification('Error performing scan. Please ensure you have uploaded a resume and JD.', 'error');
+                showNotification('Error performing scan. Please ensure you have uploaded a resume and JD, and try again.', 'error');
             }
         });
 }

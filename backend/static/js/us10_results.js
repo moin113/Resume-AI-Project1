@@ -200,19 +200,19 @@ function updateProgressBars(scan) {
     const categoryScores = scan.category_scores || {};
 
     // Searchability / ATS
-    const atsScore = category_scores.ats_compatibility || scan.ats_compatibility || 0;
+    const atsScore = categoryScores.ats_compatibility || scan.ats_compatibility || 0;
     updateProgressBar('searchability', atsScore);
 
     // Hard Skills
-    const techScore = category_scores.technical_skills || 0;
+    const techScore = categoryScores.technical_skills || 0;
     updateProgressBar('hard-skills', techScore);
 
     // Soft Skills
-    const softScore = category_scores.soft_skills || 0;
+    const softScore = categoryScores.soft_skills || 0;
     updateProgressBar('soft-skills', softScore);
 
     // Recruiter Tips (Experience match)
-    const expScore = category_scores.experience_match || 0;
+    const expScore = categoryScores.experience_match || 0;
     updateProgressBar('recruiter-tips', expScore);
 }
 
