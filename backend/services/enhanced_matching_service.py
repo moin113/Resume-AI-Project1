@@ -35,37 +35,13 @@ class RealTimeLLMService:
     Real-time AI-powered service for accurate resume-job description analysis.
     Uses spaCy for semantic analysis, NLTK for text processing, and scikit-learn for TF-IDF similarity.
     """
+    _nlp_model = None  # Class variable to cache the model
 
     def __init__(self):
         self.logger = logger
-        self.nlp = None
+        self.nlp = self._get_nlp()
         self.stop_words = set()
         
-        # Try to load spaCy model with comprehensive error handling
-        try:
-            try:
-                self.nlp = spacy.load('en_core_web_sm')
-                logger.info("✅ spaCy model 'en_core_web_sm' loaded successfully")
-            except OSError:
-                logger.warning("⚠️ spaCy model 'en_core_web_sm' not found locally")
-                try:
-                    import subprocess
-                    logger.info("Attempting to download spaCy model...")
-                    result = subprocess.run(
-                        ["python", "-m", "spacy", "download", "en_core_web_sm"], 
-                        capture_output=True, 
-                        timeout=60
-                    )
-                    if result.returncode == 0:
-                        self.nlp = spacy.load('en_core_web_sm')
-                        logger.info("✅ spaCy model downloaded and loaded successfully")
-                    else:
-                        logger.warning(f"⚠️ spaCy download failed: {result.stderr.decode()}")
-                except Exception as download_error:
-                    logger.warning(f"⚠️ Could not download spaCy model: {download_error}")
-        except Exception as e:
-            logger.warning(f"⚠️ spaCy initialization failed: {e}. Using basic NLP fallback.")
-
         # Try to load NLTK stopwords with error handling
         try:
             self.stop_words = set(stopwords.words('english'))
@@ -76,6 +52,37 @@ class RealTimeLLMService:
             self.stop_words = {'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 
                              'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the', 
                              'to', 'was', 'will', 'with'}
+
+    def _get_nlp(self):
+        """Get or load the spaCy model once"""
+        if RealTimeLLMService._nlp_model is not None:
+            return RealTimeLLMService._nlp_model
+
+        try:
+            try:
+                RealTimeLLMService._nlp_model = spacy.load('en_core_web_sm')
+                logger.info("✅ spaCy model 'en_core_web_sm' loaded successfully")
+            except OSError:
+                logger.warning("⚠️ spaCy model 'en_core_web_sm' not found locally")
+                try:
+                    import subprocess
+                    logger.info("Attempting to download spaCy model...")
+                    # Note: downloading might take time and cause a freeze if internet is slow
+                    subprocess.run(
+                        ["python", "-m", "spacy", "download", "en_core_web_sm"], 
+                        check=True,
+                        capture_output=True, 
+                        timeout=120
+                    )
+                    RealTimeLLMService._nlp_model = spacy.load('en_core_web_sm')
+                    logger.info("✅ spaCy model downloaded and loaded successfully")
+                except Exception as download_error:
+                    logger.error(f"⚠️ Could not download spaCy model: {download_error}")
+                    return None
+            return RealTimeLLMService._nlp_model
+        except Exception as e:
+            logger.error(f"⚠️ spaCy initialization failed: {e}. Using basic NLP fallback.")
+            return None
 
         # Enhanced skill synonyms for intelligent matching
         self.skill_synonyms = {

@@ -14,6 +14,13 @@ import json
 scan_bp = Blueprint('scan', __name__, url_prefix='/api')
 
 
+# Initialize services globally to prevent re-loading models on every request
+from backend.services.enhanced_matching_service import RealTimeLLMService
+from backend.services.dynamic_suggestions_service import DynamicSuggestionsService
+
+llm_service = RealTimeLLMService()
+suggestions_service = DynamicSuggestionsService()
+
 @scan_bp.route('/scan', methods=['POST'])
 @jwt_required()
 def perform_scan():
@@ -157,12 +164,6 @@ def perform_scan():
         
         # PHASE 5.4: AI / MATCHING LOGIC (NLP-based)
         try:
-            from backend.services.enhanced_matching_service import RealTimeLLMService
-            from backend.services.dynamic_suggestions_service import DynamicSuggestionsService
-            
-            llm_service = RealTimeLLMService()
-            suggestions_service = DynamicSuggestionsService()
-            
             current_app.logger.info(f"🚀 Starting Enhanced NLP Scan for user {current_user_id}")
             
             # Perform enhanced analysis

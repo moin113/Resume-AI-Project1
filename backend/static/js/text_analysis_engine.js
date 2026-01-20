@@ -50,11 +50,21 @@ class TextAnalysisEngine {
             'innovation', 'critical thinking', 'decision making', 'conflict resolution',
             'emotional intelligence', 'cultural awareness', 'flexibility', 'resilience'
         ];
+
+        // Pre-compile Regexes for performance
+        this.compiledRegexes = {};
+        [...this.technicalSkills, ...this.softSkills].forEach(skill => {
+            let patterns = [this.escapeRegex(skill)];
+            if (this.skillSynonyms[skill]) {
+                patterns = patterns.concat(this.skillSynonyms[skill].map(s => this.escapeRegex(s)));
+            }
+            this.compiledRegexes[skill] = new RegExp(`\\b(${patterns.join('|')})\\b`, 'gi');
+        });
     }
 
     analyzeTexts(resumeText, jobDescriptionText) {
-        console.log('🔍 Starting real-time text analysis...');
-        
+        console.log('🔍 Starting real-time text analysis (Optimized)...');
+
         if (!resumeText || !jobDescriptionText) {
             console.error('❌ Missing resume or job description text');
             return this.getEmptyAnalysis();
@@ -103,7 +113,7 @@ class TextAnalysisEngine {
             soft: {}
         };
 
-        // Extract technical skills
+        // Extract technical skills using pre-compiled regexes
         this.technicalSkills.forEach(skill => {
             const frequency = this.countSkillOccurrences(textLower, skill);
             if (frequency > 0) {
@@ -111,7 +121,7 @@ class TextAnalysisEngine {
             }
         });
 
-        // Extract soft skills
+        // Extract soft skills using pre-compiled regexes
         this.softSkills.forEach(skill => {
             const frequency = this.countSkillOccurrences(textLower, skill);
             if (frequency > 0) {
@@ -123,23 +133,11 @@ class TextAnalysisEngine {
     }
 
     countSkillOccurrences(text, skill) {
-        let count = 0;
-        
-        // Count main skill
-        const mainRegex = new RegExp(`\\b${this.escapeRegex(skill)}\\b`, 'gi');
-        const mainMatches = text.match(mainRegex);
-        if (mainMatches) count += mainMatches.length;
+        const regex = this.compiledRegexes[skill];
+        if (!regex) return 0;
 
-        // Count synonyms
-        if (this.skillSynonyms[skill]) {
-            this.skillSynonyms[skill].forEach(synonym => {
-                const synonymRegex = new RegExp(`\\b${this.escapeRegex(synonym)}\\b`, 'gi');
-                const synonymMatches = text.match(synonymRegex);
-                if (synonymMatches) count += synonymMatches.length;
-            });
-        }
-
-        return count;
+        const matches = text.match(regex);
+        return matches ? matches.length : 0;
     }
 
     escapeRegex(string) {
@@ -156,7 +154,7 @@ class TextAnalysisEngine {
         Object.keys(jobSkills.technical).forEach(skill => {
             const jobFreq = jobSkills.technical[skill];
             const resumeFreq = resumeSkills.technical[skill] || 0;
-            
+
             if (resumeFreq > 0) {
                 comparison.technical.matched.push({
                     skill,
@@ -187,7 +185,7 @@ class TextAnalysisEngine {
         Object.keys(jobSkills.soft).forEach(skill => {
             const jobFreq = jobSkills.soft[skill];
             const resumeFreq = resumeSkills.soft[skill] || 0;
-            
+
             if (resumeFreq > 0) {
                 comparison.soft.matched.push({
                     skill,
@@ -218,20 +216,20 @@ class TextAnalysisEngine {
 
     calculateSkillImportance(skill, frequency) {
         let importance = Math.min(frequency / 3.0, 1.0);
-        
+
         // Boost critical skills
         const criticalSkills = ['python', 'javascript', 'react', 'sql', 'aws', 'leadership', 'communication'];
         if (criticalSkills.includes(skill)) {
             importance *= 1.5;
         }
-        
+
         return Math.min(importance, 1.0);
     }
 
     calculateMatchRate(skillComparison) {
         const totalTechnicalRequired = skillComparison.technical.matched.length + skillComparison.technical.missing.length;
         const totalSoftRequired = skillComparison.soft.matched.length + skillComparison.soft.missing.length;
-        
+
         if (totalTechnicalRequired === 0 && totalSoftRequired === 0) {
             return 100;
         }
@@ -244,13 +242,13 @@ class TextAnalysisEngine {
 
         // Weight technical skills more heavily
         const overallScore = (technicalScore * 0.7) + (softScore * 0.3);
-        
+
         return Math.round(overallScore);
     }
 
     generateRecruiterTips(resumeText, jobText, skillComparison) {
         const tips = [];
-        
+
         // Missing critical skills
         const criticalMissing = skillComparison.technical.missing.filter(skill => skill.importance > 0.7);
         if (criticalMissing.length > 0) {
@@ -302,7 +300,7 @@ class TextAnalysisEngine {
         // Contact information
         const hasEmail = /@/.test(resumeText);
         const hasPhone = /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/.test(resumeText);
-        
+
         if (!hasEmail) {
             tips.push({
                 type: 'error',
@@ -311,7 +309,7 @@ class TextAnalysisEngine {
                 icon: '✗'
             });
         }
-        
+
         if (!hasPhone) {
             tips.push({
                 type: 'error',
@@ -326,7 +324,7 @@ class TextAnalysisEngine {
 
     analyzeFormatting(resumeText) {
         const checks = [];
-        
+
         // Check for sections
         const hasSummary = /summary|profile|objective/i.test(resumeText);
         const hasExperience = /experience|work|employment/i.test(resumeText);
@@ -377,7 +375,7 @@ class TextAnalysisEngine {
         const techIssues = skillComparison.technical.missing.length;
         const softIssues = skillComparison.soft.missing.length;
         const formatIssues = formattingAnalysis.filter(check => check.type === 'error' || check.type === 'warning').length;
-        
+
         const totalTechSkills = skillComparison.technical.matched.length + skillComparison.technical.missing.length;
         const totalSoftSkills = skillComparison.soft.matched.length + skillComparison.soft.missing.length;
 

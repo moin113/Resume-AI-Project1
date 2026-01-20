@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard - ResumeDoctor AI</title>
-    <link rel="stylesheet" href="static/css/us10_styles.css?v=1.1">
+    <link rel="stylesheet" href="/static/css/us10_styles.css?v=2.0">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
         rel="stylesheet">
 </head>
@@ -166,6 +166,54 @@
                         </div>
                     </div>
 
+                    <!-- Real-time Analysis Feedback (Premium) -->
+                    <div id="real-time-feedback" class="real-time-feedback" style="display: none; margin-top: 24px;">
+                        <div class="feedback-card">
+                            <div class="feedback-header">
+                                <div class="feedback-title-group">
+                                    <h3>Live Score</h3>
+                                    <span id="match-quality-badge" class="badge">Checking...</span>
+                                </div>
+                                <div class="live-match-score"><span id="live-score">0%</span></div>
+                            </div>
+
+                            <div class="feedback-grid">
+                                <div class="feedback-item">
+                                    <span class="label">Technical Match</span>
+                                    <div class="stat-row">
+                                        <span id="live-tech-matches">0</span>
+                                        <span class="sub-label">keywords found</span>
+                                    </div>
+                                    <div class="progress-bar-sm">
+                                        <div id="tech-progress" class="progress-fill"></div>
+                                    </div>
+                                </div>
+                                <div class="feedback-item">
+                                    <span class="label">Soft Skills</span>
+                                    <div class="stat-row">
+                                        <span id="live-soft-matches">0</span>
+                                        <span class="sub-label">identified</span>
+                                    </div>
+                                    <div class="progress-bar-sm">
+                                        <div id="soft-progress" class="progress-fill"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="missing-keywords-section">
+                                <span class="label">High Priority Keywords to Add:</span>
+                                <div id="live-missing-keywords" class="keyword-tags">
+                                    <!-- Populated by JS -->
+                                </div>
+                            </div>
+
+                            <div class="live-tips-section">
+                                <span class="label">Quick AI Tip:</span>
+                                <p id="live-ai-tip" class="tip-text">Analyzing your content...</p>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Scan Controls -->
                     <div class="scan-controls">
                         <div class="scan-info">
@@ -282,8 +330,9 @@
         </div>
     </footer>
 
-    <script src="static/js/config.js?v=1.1"></script>
-    <script src="static/js/us10_dashboard.js?v=1.1"></script>
+    <script src="/static/js/config.js?v=3.3"></script>
+    <script src="/static/js/text_analysis_engine.js?v=3.3"></script>
+    <script src="/static/js/us10_dashboard.js?v=3.3"></script>
     <script>
         function handleBrandClick(event) {
             // For logged-in users, show a confirmation before leaving dashboard

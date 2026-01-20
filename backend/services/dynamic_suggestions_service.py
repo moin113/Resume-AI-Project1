@@ -14,22 +14,30 @@ from backend.services.matching_service import MatchingService
 class DynamicSuggestionsService:
     """Enhanced suggestions service with advanced NLP-based keyword analysis"""
 
+    _nlp_model = None  # Class variable to cache the model
+
     def __init__(self):
         self.matching_service = MatchingService()
-
-        # Initialize NLP components for better keyword analysis (lazy loading)
-        self.nlp = None  # Load spaCy model lazily when needed
+        self.nlp = self._get_nlp_model()
 
     def _get_nlp_model(self):
-        """Load spaCy model lazily"""
-        if self.nlp is None:
+        """Get or load the spaCy model once"""
+        if DynamicSuggestionsService._nlp_model is not None:
+            return DynamicSuggestionsService._nlp_model
+
+        try:
+            import spacy
             try:
-                import spacy
-                self.nlp = spacy.load('en_core_web_sm')
-            except:
-                self.nlp = False  # Mark as unavailable
-                print("⚠️ spaCy not available - using basic keyword analysis")
-        return self.nlp if self.nlp is not False else None
+                DynamicSuggestionsService._nlp_model = spacy.load('en_core_web_sm')
+            except OSError:
+                # Fallback to loading from RealTimeLLMService if already loaded there
+                from backend.services.enhanced_matching_service import RealTimeLLMService
+                DynamicSuggestionsService._nlp_model = RealTimeLLMService._nlp_model
+        except:
+            DynamicSuggestionsService._nlp_model = False  # Mark as unavailable
+            print("⚠️ spaCy not available - using basic keyword analysis")
+        
+        return DynamicSuggestionsService._nlp_model if DynamicSuggestionsService._nlp_model is not False else None
 
     def analyze_keywords_advanced(self, resume_id: int, jd_id: int, user_id: int) -> Dict:
         """

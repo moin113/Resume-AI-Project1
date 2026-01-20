@@ -176,13 +176,25 @@ class KeywordParser:
         return None
     
     def _get_spacy_model(self):
-        """Get SpaCy model for advanced NLP"""
+        """Get SpaCy model for advanced NLP with caching"""
+        if KeywordParser._nlp_model is not None:
+            return KeywordParser._nlp_model
+
         if SPACY_AVAILABLE:
             try:
-                return spacy.load('en_core_web_sm')
+                # Try to load from RealTimeLLMService if available
+                from backend.services.enhanced_matching_service import RealTimeLLMService
+                if RealTimeLLMService._nlp_model:
+                    KeywordParser._nlp_model = RealTimeLLMService._nlp_model
+                    return KeywordParser._nlp_model
+                
+                KeywordParser._nlp_model = spacy.load('en_core_web_sm')
+                return KeywordParser._nlp_model
             except OSError:
-                logger.warning("SpaCy model 'en_core_web_sm' not found. Install with: python -m spacy download en_core_web_sm")
+                logger.warning("SpaCy model 'en_core_web_sm' not found. Fallback to basic extraction.")
         return None
+
+    _nlp_model = None  # Class variable to cache the model
     
     def extract_keywords(self, text: str, max_keywords: int = 50) -> Dict[str, List[str]]:
         """

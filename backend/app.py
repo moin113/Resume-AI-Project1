@@ -193,6 +193,22 @@ def create_app():
     except Exception as e:
         logger.error(f"Account blueprint failed: {e}")
 
+    # ---------------- MATCHING BLUEPRINT (US-06) ----------------
+    try:
+        from backend.routes.us06_matching_routes import matching_bp
+        app.register_blueprint(matching_bp)
+        logger.info("Matching blueprint registered (US-06)")
+    except Exception as e:
+        logger.error(f"Matching blueprint failed: {e}")
+
+    # ---------------- HISTORY BLUEPRINT (US-10) ----------------
+    try:
+        from backend.routes.us10_history_routes import history_bp
+        app.register_blueprint(history_bp)
+        logger.info("History blueprint registered (US-10)")
+    except Exception as e:
+        logger.error(f"History blueprint failed: {e}")
+
     return app
 
 

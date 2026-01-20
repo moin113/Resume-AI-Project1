@@ -130,6 +130,51 @@ class FileParser:
             return False, "", error_msg
     
     @staticmethod
+    def extract_text_from_file(file_obj):
+        """
+        Main entry point for extracting text from a file object (Flask FileStorage)
+        
+        Args:
+            file_obj: The file-like object from request.files
+            
+        Returns:
+            str: Extracted and cleaned text
+        """
+        filename = file_obj.filename.lower()
+        
+        # Save to a temporary location if needed, or handle in-memory
+        # python-docx can handle file objects directly
+        # PyPDF2 can also handle file objects
+        
+        try:
+            if filename.endswith('.pdf'):
+                # For PDF, we might need to seek(0) if it was read before
+                file_obj.seek(0)
+                pdf_reader = PyPDF2.PdfReader(file_obj)
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text() or ""
+                return FileParser._clean_extracted_text(text)
+                
+            elif filename.endswith('.docx'):
+                file_obj.seek(0)
+                doc = Document(file_obj)
+                text = "\n".join([para.text for para in doc.paragraphs])
+                return FileParser._clean_extracted_text(text)
+                
+            elif filename.endswith('.txt'):
+                file_obj.seek(0)
+                text = file_obj.read().decode('utf-8', errors='ignore')
+                return FileParser._clean_extracted_text(text)
+                
+            else:
+                raise ValueError(f"Extrapolation of text from {filename} is not supported")
+                
+        except Exception as e:
+            logger.error(f"Error in extract_text_from_file: {e}")
+            raise
+
+    @staticmethod
     def parse_resume_file(file_path, file_type):
         """
         Parse resume file based on its type
