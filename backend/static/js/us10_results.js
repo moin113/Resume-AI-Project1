@@ -13,7 +13,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Initialize results page
     initializeResultsPage();
+
+    // Update user greeting
+    updateUserGreeting();
 });
+
+function updateUserGreeting() {
+    const userJson = localStorage.getItem('dr_resume_user');
+    if (userJson) {
+        try {
+            const user = JSON.parse(userJson);
+            const greetingEl = document.querySelector('.user-greeting');
+            if (greetingEl) {
+                greetingEl.textContent = `Hi, ${user.first_name || 'there'}!`;
+            }
+        } catch (e) {
+            console.error('Error parsing user data for greeting', e);
+        }
+    }
+}
 
 function initializeResultsPage() {
     console.log('✅ Results page initialized');
@@ -66,11 +84,14 @@ async function loadScanResults() {
         }
     } else {
         // Fallback to localStorage (Phase 8.4 fallback)
-        const scanResult = JSON.parse(localStorage.getItem('currentScanResult') || '{}');
-        if (scanResult.success) {
-            // Mock the structure or reload if possible
+        const scanResult = JSON.parse(localStorage.getItem('currentScanResult') || localStorage.getItem('currentScanData') || '{}');
+        if (scanResult.success || scanResult.overall_match_score) {
             console.log('📊 Using data from localStorage');
-            // For better experience, we should redirect or show something
+            displayScanDetails(scanResult);
+            showNotification('Displaying sample results', 'info');
+        } else {
+            console.log('📝 No scan data found in URL or localStorage');
+            showNotification('No scan results found. Please perform a scan first.', 'warning');
         }
     }
 }
@@ -355,24 +376,39 @@ function populateHardSkillsFromAnalysis(analysis) {
     const missingSkills = analysis.detailed_analysis.missing_skills || [];
 
     // Add matched technical skills
-    matchedSkills.filter(skill => skill.match_type !== 'soft').forEach(skill => {
+    matchedSkills.filter(skill => {
+        const skillObj = typeof skill === 'string' ? { skill: skill, category: 'technical' } : skill;
+        return skillObj.category !== 'soft_skills' && skillObj.match_type !== 'soft';
+    }).forEach(skill => {
+        const skillName = typeof skill === 'string' ? skill : skill.skill;
+        const resumeFreq = typeof skill === 'object' ? (skill.resume_freq || 'Found') : 'Found';
+        const jdFreq = typeof skill === 'object' ? (skill.jd_freq || 'Required') : 'Required';
+
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td class="skill-name">${skill.skill}</td>
-            <td class="skill-count found">${skill.resume_freq || 'Found'}</td>
-            <td class="skill-count found">${skill.jd_freq || 'Required'}</td>
+            <td class="skill-name">${skillName}</td>
+            <td class="skill-count found">${resumeFreq}</td>
+            <td class="skill-count found">${jdFreq}</td>
             <td class="match-icon found">✓</td>
         `;
         tbody.appendChild(row);
     });
 
     // Add missing technical skills (show as gaps)
-    missingSkills.filter(skill => skill.category !== 'soft_skills').slice(0, 5).forEach(skill => {
+    const filteredMissing = missingSkills.filter(skill => {
+        const skillObj = typeof skill === 'string' ? { skill: skill, category: 'technical' } : skill;
+        return skillObj.category !== 'soft_skills';
+    });
+
+    filteredMissing.slice(0, 10).forEach(skill => {
+        const skillName = typeof skill === 'string' ? skill : skill.skill;
+        const jdFreq = typeof skill === 'object' ? (skill.jd_freq || 'Required') : 'Required';
+
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td class="skill-name">${skill.skill}</td>
+            <td class="skill-name">${skillName}</td>
             <td class="skill-count missing">Missing</td>
-            <td class="skill-count found">${skill.jd_freq || 'Required'}</td>
+            <td class="skill-count found">${jdFreq}</td>
             <td class="match-icon missing">✗</td>
         `;
         tbody.appendChild(row);
@@ -409,31 +445,39 @@ function populateSoftSkillsFromAnalysis(analysis) {
     };
 
     // Add matched soft skills - check both category and skill name
-    matchedSkills.filter(skill =>
-        skill.category === 'soft_skills' ||
-        skill.match_type === 'soft' ||
-        isSoftSkill(skill.skill)
-    ).forEach(skill => {
+    matchedSkills.filter(skill => {
+        const skillObj = typeof skill === 'string' ? { skill: skill, category: 'soft_skills' } : skill;
+        const skillName = skillObj.skill || (typeof skill === 'string' ? skill : '');
+        return skillObj.category === 'soft_skills' || skillObj.match_type === 'soft' || isSoftSkill(skillName);
+    }).forEach(skill => {
+        const skillName = typeof skill === 'string' ? skill : skill.skill;
+        const resumeFreq = typeof skill === 'object' ? (skill.resume_freq || 'Found') : 'Found';
+        const jdFreq = typeof skill === 'object' ? (skill.jd_freq || 'Required') : 'Required';
+
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td class="skill-name">${skill.skill}</td>
-            <td class="skill-count found">${skill.resume_freq || 'Found'}</td>
-            <td class="skill-count found">${skill.jd_freq || 'Required'}</td>
+            <td class="skill-name">${skillName}</td>
+            <td class="skill-count found">${resumeFreq}</td>
+            <td class="skill-count found">${jdFreq}</td>
             <td class="match-icon found">✓</td>
         `;
         tbody.appendChild(row);
     });
 
     // Add missing soft skills - check both category and skill name
-    missingSkills.filter(skill =>
-        skill.category === 'soft_skills' ||
-        isSoftSkill(skill.skill)
-    ).slice(0, 5).forEach(skill => {
+    missingSkills.filter(skill => {
+        const skillObj = typeof skill === 'string' ? { skill: skill, category: 'soft_skills' } : skill;
+        const skillName = skillObj.skill || (typeof skill === 'string' ? skill : '');
+        return skillObj.category === 'soft_skills' || isSoftSkill(skillName);
+    }).slice(0, 5).forEach(skill => {
+        const skillName = typeof skill === 'string' ? skill : skill.skill;
+        const jdFreq = typeof skill === 'object' ? (skill.jd_freq || 'Required') : 'Required';
+
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td class="skill-name">${skill.skill}</td>
+            <td class="skill-name">${skillName}</td>
             <td class="skill-count missing">Missing</td>
-            <td class="skill-count found">${skill.jd_freq || 'Required'}</td>
+            <td class="skill-count found">${jdFreq}</td>
             <td class="match-icon missing">✗</td>
         `;
         tbody.appendChild(row);

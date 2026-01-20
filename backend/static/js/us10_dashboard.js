@@ -491,11 +491,10 @@ function performActualScan(resumeText, jobDescription, token) {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            // If we have text but no ID, the backend will use the latest uploaded
-            // For a better experience, we should probably save first if text changed
-            // but for MVP /api/scan works with nulls
             resume_id: null,
-            job_description_id: null
+            job_description_id: null,
+            resume_text: resumeText,
+            job_description_text: jobDescription
         })
     })
         .then(response => {

@@ -68,77 +68,54 @@ def perform_scan():
                 }
             }), 403
         
+        # PHASE 5.3: DATA COLLECTION
         # Get request data
         data = request.get_json() or {}
         resume_id = data.get('resume_id')
         job_description_id = data.get('job_description_id')
+        resume_text_input = data.get('resume_text')
+        jd_text_input = data.get('job_description_text')
         
         current_app.logger.info(f"📊 Scan request received for user {current_user_id}")
-        current_app.logger.info(f"📄 Resume ID: {resume_id}, JD ID: {job_description_id}")
         
-        # PHASE 5.3: DATA COLLECTION
-        # If IDs are null, use latest
-        if resume_id is None:
-            resume = Resume.query.filter_by(
-                user_id=current_user_id,
-                is_active=True
-            ).order_by(Resume.created_at.desc()).first()
-            
-            if not resume:
-                return jsonify({
-                    'success': False,
-                    'message': 'No resume found. Please upload a resume first.'
-                }), 404
-            
-            resume_id = resume.id
-            current_app.logger.info(f"📄 Using latest resume ID: {resume_id}")
-        else:
-            # Validate resume belongs to user
-            resume = Resume.query.filter_by(
-                id=resume_id,
-                user_id=current_user_id,
-                is_active=True
-            ).first()
-            
-            if not resume:
-                return jsonify({
-                    'success': False,
-                    'message': 'Resume not found'
-                }), 404
+        # 1. Handle Resume Data
+        resume = None
+        if resume_id:
+            resume = Resume.query.filter_by(id=resume_id, user_id=current_user_id, is_active=True).first()
         
-        if job_description_id is None:
-            job_description = JobDescription.query.filter_by(
-                user_id=current_user_id,
-                is_active=True
-            ).order_by(JobDescription.created_at.desc()).first()
-            
-            if not job_description:
-                return jsonify({
-                    'success': False,
-                    'message': 'No job description found. Please create a job description first.'
-                }), 404
-            
-            job_description_id = job_description.id
-            current_app.logger.info(f"📄 Using latest JD ID: {job_description_id}")
-        else:
-            # Validate JD belongs to user
-            job_description = JobDescription.query.filter_by(
-                id=job_description_id,
-                user_id=current_user_id,
-                is_active=True
-            ).first()
-            
-            if not job_description:
-                return jsonify({
-                    'success': False,
-                    'message': 'Job description not found'
-                }), 404
+        if not resume and resume_text_input:
+            # Use provided text directly
+            # We create a dummy object to satisfy the rest of the logic
+            # or we could save it if we wanted to
+            resume = Resume(user_id=current_user_id, extracted_text=resume_text_input, title="Pasted Resume")
         
-        # Log data collection
-        current_app.logger.info(f"📄 Resume ID: {resume.id}")
-        current_app.logger.info(f"📄 JD ID: {job_description.id}")
+        if not resume:
+            # Fallback to latest
+            resume = Resume.query.filter_by(user_id=current_user_id, is_active=True).order_by(Resume.created_at.desc()).first()
+            
+        if not resume:
+            return jsonify({'success': False, 'message': 'No resume found. Please upload or paste a resume.'}), 404
+
+        # 2. Handle Job Description Data
+        job_description = None
+        if job_description_id:
+            job_description = JobDescription.query.filter_by(id=job_description_id, user_id=current_user_id, is_active=True).first()
+            
+        if not job_description and jd_text_input:
+            job_description = JobDescription(user_id=current_user_id, job_text=jd_text_input, title="Pasted Job Description")
+            
+        if not job_description:
+            job_description = JobDescription.query.filter_by(user_id=current_user_id, is_active=True).order_by(JobDescription.created_at.desc()).first()
+            
+        if not job_description:
+            return jsonify({'success': False, 'message': 'No job description found. Please paste or upload a JD.'}), 404
+
+        # Log details
+        current_app.logger.info(f"📄 Resume Ref: {resume.id if hasattr(resume, 'id') else 'Text only'}")
+        current_app.logger.info(f"📄 JD Ref: {job_description.id if hasattr(job_description, 'id') else 'Text only'}")
         current_app.logger.info(f"📄 Resume text length: {len(resume.extracted_text) if resume.extracted_text else 0}")
-        current_app.logger.info(f"📄 JD text length: {len(job_description.job_text)}")
+        current_app.logger.info(f"📄 JD text length: {len(job_description.job_text) if job_description.job_text else 0}")
+
         
         # Validate extracted text exists
         if not resume.extracted_text:
@@ -206,8 +183,8 @@ def perform_scan():
             # PHASE 5.5: RESULT STORAGE
             scan_history = ScanHistory(
                 user_id=current_user_id,
-                resume_id=resume.id,
-                job_description_id=job_description.id,
+                resume_id=resume.id if hasattr(resume, 'id') else None,
+                job_description_id=job_description.id if hasattr(job_description, 'id') else None,
                 overall_match_score=overall_score,
                 category_scores=category_scores,
                 detailed_analysis=detailed_analysis,
