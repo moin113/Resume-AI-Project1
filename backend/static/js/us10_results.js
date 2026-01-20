@@ -24,8 +24,13 @@ function updateUserGreeting() {
         try {
             const user = JSON.parse(userJson);
             const greetingEl = document.querySelector('.user-greeting');
+            const welcomeTitle = document.querySelector('.welcome-title');
+
             if (greetingEl) {
                 greetingEl.textContent = `Hi, ${user.first_name || 'there'}!`;
+            }
+            if (welcomeTitle) {
+                welcomeTitle.textContent = `Welcome, ${user.first_name || 'User'}`;
             }
         } catch (e) {
             console.error('Error parsing user data for greeting', e);
@@ -97,7 +102,10 @@ async function loadScanResults() {
 }
 
 function handleAuthError() {
+    console.log('❌ Session expired or invalid, cleaning up...');
     localStorage.removeItem('dr_resume_token');
+    localStorage.removeItem('dr_resume_refresh_token');
+    localStorage.removeItem('dr_resume_user');
     window.location.href = '/login';
 }
 

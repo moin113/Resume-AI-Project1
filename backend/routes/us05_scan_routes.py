@@ -84,17 +84,23 @@ def perform_scan():
             resume = Resume.query.filter_by(id=resume_id, user_id=current_user_id, is_active=True).first()
         
         if not resume and resume_text_input:
-            # Use provided text directly
-            # We create a dummy object to satisfy the rest of the logic
-            # or we could save it if we wanted to
-            resume = Resume(user_id=current_user_id, extracted_text=resume_text_input, title="Pasted Resume")
+            # For pasted text, we don't create a Resume object
+            # We'll use the text directly and set resume to None
+            # The scan will work with resume_text_input directly
+            current_app.logger.info(f"📝 Using pasted resume text (length: {len(resume_text_input)})")
         
-        if not resume:
-            # Fallback to latest
+        if not resume and not resume_text_input:
+            # Fallback to latest saved resume
             resume = Resume.query.filter_by(user_id=current_user_id, is_active=True).order_by(Resume.created_at.desc()).first()
             
-        if not resume:
+        if not resume and not resume_text_input:
             return jsonify({'success': False, 'message': 'No resume found. Please upload or paste a resume.'}), 404
+
+        # Get the actual resume text to use
+        if resume:
+            resume_text = resume.extracted_text
+        else:
+            resume_text = resume_text_input
 
         # 2. Handle Job Description Data
         job_description = None
@@ -102,26 +108,34 @@ def perform_scan():
             job_description = JobDescription.query.filter_by(id=job_description_id, user_id=current_user_id, is_active=True).first()
             
         if not job_description and jd_text_input:
-            job_description = JobDescription(user_id=current_user_id, job_text=jd_text_input, title="Pasted Job Description")
+            # For pasted JD text, we don't create a JobDescription object
+            # We'll use the text directly
+            current_app.logger.info(f"📝 Using pasted JD text (length: {len(jd_text_input)})")
             
-        if not job_description:
+        if not job_description and not jd_text_input:
             job_description = JobDescription.query.filter_by(user_id=current_user_id, is_active=True).order_by(JobDescription.created_at.desc()).first()
             
-        if not job_description:
+        if not job_description and not jd_text_input:
             return jsonify({'success': False, 'message': 'No job description found. Please paste or upload a JD.'}), 404
 
+        # Get the actual JD text to use
+        if job_description:
+            jd_text = job_description.job_text
+        else:
+            jd_text = jd_text_input
+
         # Log details
-        current_app.logger.info(f"📄 Resume Ref: {resume.id if hasattr(resume, 'id') else 'Text only'}")
-        current_app.logger.info(f"📄 JD Ref: {job_description.id if hasattr(job_description, 'id') else 'Text only'}")
-        current_app.logger.info(f"📄 Resume text length: {len(resume.extracted_text) if resume.extracted_text else 0}")
-        current_app.logger.info(f"📄 JD text length: {len(job_description.job_text) if job_description.job_text else 0}")
+        current_app.logger.info(f"📄 Resume Ref: {resume.id if resume else 'Text only'}")
+        current_app.logger.info(f"📄 JD Ref: {job_description.id if job_description else 'Text only'}")
+        current_app.logger.info(f"📄 Resume text length: {len(resume_text) if resume_text else 0}")
+        current_app.logger.info(f"📄 JD text length: {len(jd_text) if jd_text else 0}")
 
         
         # Validate extracted text exists
-        if not resume.extracted_text:
+        if not resume_text or not jd_text:
             return jsonify({
                 'success': False,
-                'message': 'Resume text not extracted. Please re-upload your resume.'
+                'message': 'Resume text and job description text are required. Please provide both.'
             }), 400
         
         # PHASE 6.3: DECREMENT LOGIC - Use free scan BEFORE processing
@@ -152,7 +166,7 @@ def perform_scan():
             current_app.logger.info(f"🚀 Starting Enhanced NLP Scan for user {current_user_id}")
             
             # Perform enhanced analysis
-            analysis_results = llm_service.analyze_resume_realtime(resume.extracted_text, job_description.job_text)
+            analysis_results = llm_service.analyze_resume_realtime(resume_text, jd_text)
             
             if not analysis_results.get('success'):
                 current_app.logger.error(f"❌ NLP Analysis failed: {analysis_results.get('error')}")
@@ -183,15 +197,17 @@ def perform_scan():
             # PHASE 5.5: RESULT STORAGE
             scan_history = ScanHistory(
                 user_id=current_user_id,
-                resume_id=resume.id if hasattr(resume, 'id') else None,
-                job_description_id=job_description.id if hasattr(job_description, 'id') else None,
+                resume_id=resume.id if resume else None,
+                job_description_id=job_description.id if job_description else None,
+                resume_text=resume_text[:5000] if resume_text else None,  # Store first 5000 chars
+                job_description_text=jd_text[:5000] if jd_text else None,  # Store first 5000 chars
                 overall_match_score=overall_score,
                 category_scores=category_scores,
                 detailed_analysis=detailed_analysis,
                 recommendations=recommendations,
                 keyword_analysis=keyword_analysis,
                 ats_compatibility=category_scores.get('ats_compatibility', overall_score),
-                scan_type='stored',
+                scan_type='realtime' if (not resume or not job_description) else 'stored',
                 algorithm_used='llm_enhanced',
                 scan_duration=scan_duration
             )
@@ -233,8 +249,8 @@ def perform_scan():
             error_details = {
                 'error_type': type(matching_error).__name__,
                 'error_message': str(matching_error),
-                'resume_text_length': len(resume.extracted_text) if resume.extracted_text else 0,
-                'jd_text_length': len(job_description.job_text) if job_description.job_text else 0
+                'resume_text_length': len(resume_text) if resume_text else 0,
+                'jd_text_length': len(jd_text) if jd_text else 0
             }
             
             return jsonify({

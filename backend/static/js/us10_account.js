@@ -79,6 +79,12 @@ async function loadUserInfo() {
             if (result.success && result.user) {
                 const user = result.user;
                 document.getElementById('welcomeMessage').textContent = `Welcome, ${user.first_name}`;
+
+                // Also update header greeting if it exists
+                const headerGreeting = document.querySelector('.user-greeting');
+                if (headerGreeting) {
+                    headerGreeting.textContent = `Hi, ${user.first_name}!`;
+                }
             }
         }
     } catch (error) {

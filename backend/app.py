@@ -71,9 +71,12 @@ def create_app():
 
     # ---------------- EXTENSIONS ----------------
     # In production, you might want to restrict this to your domain
-    # Example: CORS(app, origins=["https://yourdomain.com"])
-    allowed_origins = os.getenv("CORS_ORIGINS", "*")
-    CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
+    # Example: CORS(app, origins=["https://yourdomain.com"], supports_credentials=True)
+    CORS(app, resources={r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }})
     JWTManager(app)
 
     # ---------------- HEALTH ----------------
@@ -174,6 +177,21 @@ def create_app():
     except Exception as e:
         logger.error(f"History blueprint failed: {e}")
         raise
+
+    # ---------------- ACCOUNT BLUEPRINT (US-10) ----------------
+    try:
+        from backend.routes.us10_account_routes import account_bp
+        app.register_blueprint(account_bp)
+        
+        # Add alias for /api/profile if it doesn't exist
+        @app.route('/api/profile', methods=['GET'])
+        def profile_alias():
+            from backend.routes.us10_account_routes import get_account_info
+            return get_account_info()
+            
+        logger.info("Account blueprint registered (US-10)")
+    except Exception as e:
+        logger.error(f"Account blueprint failed: {e}")
 
     return app
 

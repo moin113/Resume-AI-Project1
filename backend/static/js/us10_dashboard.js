@@ -22,6 +22,58 @@ document.addEventListener('DOMContentLoaded', function () {
     addEventListeners();
 });
 
+async function verifyTokenAndProceed() {
+    const token = localStorage.getItem('dr_resume_token');
+
+    if (!token) {
+        console.log('❌ No token found, redirecting to login');
+        window.location.href = '/login';
+        return;
+    }
+
+    try {
+        // Verify token and get real user data
+        const response = await fetch(`${API_BASE_URL}/api/profile`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.status === 401) {
+            handleAuthError();
+            return;
+        }
+
+        const data = await response.json();
+        if (data.success && data.user) {
+            console.log('✅ User verified:', data.user.email);
+            updateUserGreeting(data.user);
+            localStorage.setItem('dr_resume_user', JSON.stringify(data.user));
+
+            // Re-initialize other components with real data
+            initializeDashboard();
+        }
+    } catch (error) {
+        console.error('❌ Token verification error:', error);
+    }
+}
+
+function updateUserGreeting(user) {
+    const greetingElement = document.querySelector('.user-greeting');
+    const welcomeTitle = document.querySelector('.welcome-title');
+    const firstName = user.first_name || 'User';
+
+    if (greetingElement) {
+        greetingElement.textContent = `Hi, ${firstName}!`;
+    }
+
+    if (welcomeTitle) {
+        welcomeTitle.textContent = `Welcome, ${firstName}`;
+    }
+}
+
 async function loadDashboardSummary() {
     const token = localStorage.getItem('dr_resume_token');
     try {
