@@ -401,7 +401,7 @@ class RealTimeLLMService:
             })
             
         # 2. Formatting / ATS
-        if len(res['text_metrics']['words']) < 300:
+        if res['text_metrics']['words'] < 300:
             recs.append({
                 'title': "Expand your resume content",
                 'description': "Your resume is shorter than recommended (under 300 words).",
